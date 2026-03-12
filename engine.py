@@ -1,50 +1,61 @@
-"""Core engine: agent loading, tool dispatch, completion loop, delegation."""
+"""Core engine: async agent loading, tool dispatch, completion loop, delegation."""
 
 from __future__ import annotations
 
-import atexit
-import concurrent.futures
-import os
+import asyncio
+import contextvars
 import itertools
 import json
 import logging
+import os
 import re
-import readline  # noqa: F401 — enables option+backspace, cmd+backspace in input()
-import signal
+import readline
 import sys
 import threading
 import time
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, AsyncGenerator, Callable
 
+import aiofiles
 import litellm
 import yaml
 
 from config import (
     AGENTS_DIR,
-    ALLOWED_READ_DIRS,
     CONTEXT_SUMMARIZE,
+    DELEGATION_RETRY_COUNT,
     GLOBAL_SKILLS_DIR,
     LOG_LEVEL,
     MAX_CONTEXT_MESSAGES,
     MAX_DELEGATION_DEPTH,
-    MAX_PARALLEL_TOOLS,
     MAX_SYSTEM_PROMPT_CHARS,
     MAX_TOOL_ITERATIONS,
     MAX_TOOL_OUTPUT_CHARS,
     MEMORY_COMPRESS_ENABLED,
-    MEMORY_DIR,
+    MEMORY_DB_PATH,
     MEMORY_MAX_LINES,
     MEMORY_MIN_MESSAGES,
     MEMORY_WRITE_MAX_CHARS,
     MODEL,
     SKILLS_DIR,
+    validate_env,
 )
+from events import Event, EventBus, EventType
+from memory_store import MemoryStore, parse_bullet_entries
+from models import AgentResult, AgentStatus
 from tools import ToolRegistry
 
 logger = logging.getLogger("copper_town")
+
+# Context variables (asyncio-compatible replacements for threading.local)
+_delegation_chain: contextvars.ContextVar[list[str]] = contextvars.ContextVar(
+    "delegation_chain", default=[]
+)
+_last_usage: contextvars.ContextVar[dict] = contextvars.ContextVar(
+    "last_usage", default={"in": 0, "out": 0}
+)
 
 
 @dataclass
@@ -54,7 +65,6 @@ class AgentDefinition:
     slug: str
     name: str
     description: str
-    agent_dir: Path = field(default_factory=lambda: Path("."))
     tools: list[str] = field(default_factory=list)
     delegates_to: list[str] = field(default_factory=list)
     skills: list[str] = field(default_factory=list)
@@ -64,39 +74,40 @@ class AgentDefinition:
 
 
 class Engine:
-    """LiteLLM-powered agent engine with tool calling, delegation, and memory."""
+    """LiteLLM-powered async agent engine with tool calling, delegation, and memory."""
 
     def __init__(self, model: str | None = None) -> None:
         self.model = model or MODEL
+        validate_env(self.model)
         self.registry = ToolRegistry()
         self.agents: dict[str, AgentDefinition] = {}
-        self._local = threading.local()
+        self.memory_store = MemoryStore(MEMORY_DB_PATH)
+        self.event_bus = EventBus()
+        self._initialized = False
+        self._spinner_status: list[str] = [""]  # mutable; updated live during delegation
         logging.basicConfig(
             level=getattr(logging, LOG_LEVEL.upper(), logging.WARNING),
             format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         )
-        self._mem_locks: dict[str, threading.Lock] = {}
-        self._mem_locks_lock = threading.Lock()
-        self._session_agent: AgentDefinition | None = None
-        self._session_messages: list[dict] | None = None
-        self._spinner_status: list[str] = [""]  # mutable; updated live during delegation
         self._load_all_agents()
 
-    def _get_mem_lock(self, path: Path) -> threading.Lock:
-        """Return (creating if needed) a per-file threading.Lock for memory writes."""
-        key = str(path.resolve())
-        with self._mem_locks_lock:
-            if key not in self._mem_locks:
-                self._mem_locks[key] = threading.Lock()
-            return self._mem_locks[key]
+    async def _ensure_initialized(self) -> None:
+        """Initialize async resources on first use."""
+        if not self._initialized:
+            await self.memory_store.initialize()
+            self._initialized = True
+
+    async def close(self) -> None:
+        """Clean up async resources."""
+        await self.memory_store.close()
 
     # ── Agent loading ──────────────────────────────────────────────
 
     def _load_all_agents(self) -> None:
-        """Scan agents/*/agent.md and parse frontmatter + body."""
+        """Scan agents/*.md and parse frontmatter + body."""
         if not AGENTS_DIR.exists():
             return
-        for path in sorted(AGENTS_DIR.glob("*/agent.md")):
+        for path in sorted(AGENTS_DIR.glob("*.md")):
             agent = self._parse_agent_file(path)
             if agent:
                 self.agents[agent.slug] = agent
@@ -114,12 +125,11 @@ class Engine:
             return None
         front = yaml.safe_load(match.group(1)) or {}
         body = match.group(2).strip()
-        agent_dir = path.parent
+        slug = path.stem
         return AgentDefinition(
-            slug=agent_dir.name,
-            name=front.get("name", agent_dir.name),
+            slug=slug,
+            name=front.get("name", slug),
             description=front.get("description", ""),
-            agent_dir=agent_dir,
             tools=front.get("tools", []),
             delegates_to=front.get("delegates_to", []),
             skills=front.get("skills", []),
@@ -132,12 +142,7 @@ class Engine:
 
     @staticmethod
     def _sanitize_memory(text: str) -> str:
-        """Sanitize memory content before injecting into system prompts.
-
-        - Removes bare separator lines (--- or more dashes) to prevent prompt structure breaks.
-        - Demotes markdown headings by wrapping in brackets so they aren't parsed as sections.
-        - Collapses 3+ consecutive blank lines to 2.
-        """
+        """Sanitize memory content before injecting into system prompts."""
         lines = text.splitlines()
         sanitized = []
         for line in lines:
@@ -147,7 +152,6 @@ class Engine:
             if line.startswith("[#"):
                 line = line + "]"
             sanitized.append(line)
-        # Collapse 3+ blank lines to 2
         result = re.sub(r"\n{3,}", "\n\n", "\n".join(sanitized))
         return result
 
@@ -160,14 +164,15 @@ class Engine:
             text,
         )
 
-    def _build_system_prompt(self, agent: AgentDefinition) -> str:
+    async def _build_system_prompt(self, agent: AgentDefinition) -> str:
         """Assemble agent body + skills + memory into a system prompt."""
         parts: list[str] = [self._interpolate_env(agent.body)]
 
         # Global skills
         if GLOBAL_SKILLS_DIR.exists():
             for skill_path in sorted(GLOBAL_SKILLS_DIR.glob("*.md")):
-                content = skill_path.read_text(encoding="utf-8").strip()
+                async with aiofiles.open(skill_path, encoding="utf-8") as f:
+                    content = (await f.read()).strip()
                 if content:
                     content = self._interpolate_env(content)
                     parts.append(f"\n\n---\n## Skill: {skill_path.stem}\n\n{content}")
@@ -177,23 +182,24 @@ class Engine:
             matches = list(SKILLS_DIR.rglob(f"{skill_name}.md"))
             skill_path = matches[0] if matches else None
             if skill_path:
-                raw = skill_path.read_text(encoding="utf-8").strip()
+                async with aiofiles.open(skill_path, encoding="utf-8") as f:
+                    raw = (await f.read()).strip()
                 # Strip frontmatter from skill
                 m = re.match(r"^---\s*\n.*?\n---\s*\n(.*)", raw, re.DOTALL)
                 content = m.group(1).strip() if m else raw
                 content = self._interpolate_env(content)
                 parts.append(f"\n\n---\n## Skill: {skill_name}\n\n{content}")
 
-        # Memory: global + per-agent
-        global_mem = MEMORY_DIR / "global.md"
-        if global_mem.exists():
-            mem = self._sanitize_memory(global_mem.read_text(encoding="utf-8").strip())
+        # Memory from SQLite
+        global_mem = await self.memory_store.get_memory_text("__global__", scope="global")
+        if global_mem:
+            mem = self._sanitize_memory(global_mem)
             if mem:
                 parts.append(f"\n\n---\n## Memory (global)\n\n{mem}")
 
-        agent_mem = agent.agent_dir / "memory.md"
-        if agent_mem.exists():
-            mem = self._sanitize_memory(agent_mem.read_text(encoding="utf-8").strip())
+        agent_mem = await self.memory_store.get_memory_text(agent.slug, scope="agent")
+        if agent_mem:
+            mem = self._sanitize_memory(agent_mem)
             if mem:
                 parts.append(f"\n\n---\n## Memory ({agent.name})\n\n{mem}")
 
@@ -250,11 +256,25 @@ class Engine:
     def _c(text: str, *codes: str) -> str:
         return "".join(codes) + text + Engine._RESET
 
-    # ── Spinner ────────────────────────────────────────────────────
+    @staticmethod
+    def _c_prompt(text: str, *codes: str) -> str:
+        """Color a string for use in an input() prompt (readline-safe).
 
-    @contextmanager
-    def _spinner(self, message: str = "Thinking"):
-        """Display an animated spinner on stdout while a block executes."""
+        Wraps escape sequences in \\x01/\\x02 so readline correctly computes
+        the visible prompt length and cursor position.
+        """
+        esc = "".join(codes)
+        return f"\x01{esc}\x02{text}\x01{Engine._RESET}\x02"
+
+    # ── Spinner (thread-based for UI, wrapped as asynccontextmanager) ──
+
+    @asynccontextmanager
+    async def _spinner(self, message: str = "Thinking"):
+        """Display an animated spinner on stdout while an async block executes.
+
+        Yields a callable that stops the spinner immediately (for use when the
+        first streaming token arrives and we want to take over the terminal).
+        """
         self._spinner_status[0] = message
         stop = threading.Event()
 
@@ -272,21 +292,26 @@ class Engine:
 
         t = threading.Thread(target=spin, daemon=True)
         t.start()
+
+        def stop_spinner() -> None:
+            stop.set()
+            t.join()
+
         try:
-            yield
+            yield stop_spinner
         finally:
             stop.set()
             t.join()
 
     # ── LLM call ───────────────────────────────────────────────────
 
-    def _call_llm(
+    async def _call_llm(
         self,
         messages: list[dict],
         tools: list[dict] | None,
         model: str | None = None,
     ) -> Any:
-        """Call LiteLLM with optional tool definitions. Retries on transient errors."""
+        """Call LiteLLM async with optional tool definitions. Retries on transient errors."""
         kwargs: dict[str, Any] = {
             "model": model or self.model,
             "messages": messages,
@@ -297,15 +322,63 @@ class Engine:
         last_exc: Exception | None = None
         for attempt in range(3):
             try:
-                return litellm.completion(**kwargs)
+                return await litellm.acompletion(**kwargs)
             except (litellm.RateLimitError, litellm.APIConnectionError) as e:
                 last_exc = e
-                time.sleep(2 ** attempt)
+                await asyncio.sleep(2 ** attempt)
         raise last_exc  # type: ignore[misc]
+
+    async def _call_llm_stream(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None,
+        model: str | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """Stream text chunks from LiteLLM. Yields nothing if response has tool calls.
+        Updates _last_usage with token counts from the final chunk when available."""
+        kwargs: dict[str, Any] = {
+            "model": model or self.model,
+            "messages": messages,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        if tools:
+            kwargs["tools"] = tools
+
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                stream = await litellm.acompletion(**kwargs)
+                async for chunk in stream:
+                    # Capture usage from any chunk that includes it (typically the last)
+                    usage = getattr(chunk, "usage", None)
+                    if usage:
+                        current = _last_usage.get()
+                        current["in"] += getattr(usage, "prompt_tokens", 0)
+                        current["out"] += getattr(usage, "completion_tokens", 0)
+
+                    delta = chunk.choices[0].delta if chunk.choices else None
+                    if delta and delta.tool_calls:
+                        # Tool-call response: drain remaining chunks silently and stop
+                        async for remaining in stream:
+                            remaining_usage = getattr(remaining, "usage", None)
+                            if remaining_usage:
+                                current = _last_usage.get()
+                                current["in"] += getattr(remaining_usage, "prompt_tokens", 0)
+                                current["out"] += getattr(remaining_usage, "completion_tokens", 0)
+                        return
+                    if delta and delta.content:
+                        yield delta.content
+                return
+            except (litellm.RateLimitError, litellm.APIConnectionError) as e:
+                last_exc = e
+                await asyncio.sleep(2 ** attempt)
+        if last_exc:
+            raise last_exc
 
     # ── Tool execution ─────────────────────────────────────────────
 
-    def _execute_tool_call(
+    async def _execute_tool_call(
         self,
         tool_call: Any,
         agent: AgentDefinition,
@@ -323,13 +396,21 @@ class Engine:
         except json.JSONDecodeError:
             return json.dumps({"error": "Invalid JSON in tool arguments"})
 
-        # Intercept delegation
-        if name == "delegate_to_agent":
-            result = self._handle_delegation(args, agent, depth, allowed_tools)
-        elif name == "remember":
-            result = self._handle_remember(args, agent)
-        else:
-            result = self.registry.execute(name, args)
+        # Intercept delegation and remember
+        _tool_t0 = time.monotonic()
+        _tool_error: str | None = None
+        try:
+            if name == "delegate_to_agent":
+                result = await self._handle_delegation(args, agent, depth)
+            elif name == "remember":
+                result = await self._handle_remember(args, agent)
+            else:
+                result = await self.registry.execute_async(name, args)
+        except Exception as exc:
+            _tool_error = str(exc)
+            result = json.dumps({"error": _tool_error})
+        finally:
+            _tool_latency_ms = (time.monotonic() - _tool_t0) * 1000
 
         logger.debug("Tool '%s' returned %d chars", name, len(result))
 
@@ -337,10 +418,23 @@ class Engine:
             trimmed = len(result) - MAX_TOOL_OUTPUT_CHARS
             result = result[:MAX_TOOL_OUTPUT_CHARS] + f"... [truncated {trimmed} chars]"
 
+        await self.event_bus.publish(Event(
+            type=EventType.TOOL_CALL_COMPLETE,
+            source=agent.slug,
+            data={
+                "agent": agent.slug,
+                "tool": name,
+                "args_preview": tool_call.function.arguments[:120],
+                "result_preview": result[:120],
+                "latency_ms": round(_tool_latency_ms, 1),
+                "success": _tool_error is None,
+                "error": _tool_error,
+            },
+        ))
         return result
 
-    def _handle_delegation(
-        self, args: dict, agent: AgentDefinition, depth: int, allowed_tools: set[str] | None = None
+    async def _handle_delegation(
+        self, args: dict, agent: AgentDefinition, depth: int,
     ) -> str:
         """Validate and execute delegation to a sub-agent."""
         raw_target = args.get("agent", "")
@@ -373,25 +467,47 @@ class Engine:
         if depth >= MAX_DELEGATION_DEPTH:
             return json.dumps({"error": "Maximum delegation depth reached."})
 
-        if not hasattr(self._local, "delegation_chain"):
-            self._local.delegation_chain = []
-        self._local.delegation_chain.append(agent.slug)
-        chain_str = " → ".join(self._local.delegation_chain + [target_slug])
+        # Use contextvars for delegation chain (create new list, don't mutate)
+        chain = _delegation_chain.get([])
+        chain = chain + [agent.slug]
+
+        chain_str = " → ".join(chain + [target_slug])
         logger.info("Delegation start: %s (depth=%d, chain: %s)", target_slug, depth + 1, chain_str)
         self._spinner_status[0] = chain_str
-        try:
-            result = self.run_task(target_slug, task, depth=depth + 1, context=context)
-        finally:
-            self._local.delegation_chain.pop()
-            # Restore spinner to parent agent name
-            self._spinner_status[0] = agent.name
-        logger.info("Delegation end: %s, result size=%d chars", target_slug, len(result))
-        return json.dumps({"agent": target_slug, "result": result})
 
-    def _handle_remember(self, args: dict, agent: AgentDefinition) -> str:
-        """Append content to the appropriate memory file."""
+        await self.event_bus.publish(Event(
+            type=EventType.TASK_DELEGATED,
+            source=agent.slug,
+            data={"target": target_slug, "task": task, "depth": depth + 1},
+        ))
+
+        agent_result: Any = None
+        for attempt in range(1 + DELEGATION_RETRY_COUNT):
+            token = _delegation_chain.set(chain)
+            try:
+                agent_result = await self.run_task(target_slug, task, depth=depth + 1, context=context)
+            finally:
+                _delegation_chain.reset(token)
+                self._spinner_status[0] = agent.name
+            if agent_result.succeeded:
+                break
+            if attempt < DELEGATION_RETRY_COUNT:
+                logger.warning(
+                    "Delegation to '%s' failed (attempt %d/%d), retrying...",
+                    target_slug, attempt + 1, 1 + DELEGATION_RETRY_COUNT,
+                )
+                self._spinner_status[0] = chain_str
+                await asyncio.sleep(1)
+
+        result_json = agent_result.to_tool_response()
+        logger.info("Delegation end: %s, result size=%d chars", target_slug, len(result_json))
+        return result_json
+
+    async def _handle_remember(self, args: dict, agent: AgentDefinition) -> str:
+        """Add content to the memory store."""
         content = args.get("content", "").strip()
         scope = args.get("scope", "agent")
+        pin = bool(args.get("pin", False))
 
         if not content:
             return json.dumps({"error": "No content provided to remember."})
@@ -402,66 +518,68 @@ class Engine:
         if len(content) > MEMORY_WRITE_MAX_CHARS:
             content = content[:MEMORY_WRITE_MAX_CHARS] + "... [truncated]"
 
-        if scope == "global":
-            mem_path = MEMORY_DIR / "global.md"
-            MEMORY_DIR.mkdir(parents=True, exist_ok=True)
-        else:
-            mem_path = agent.agent_dir / "memory.md"
+        agent_slug = "__global__" if scope == "global" else agent.slug
+        await self.memory_store.add(agent_slug, content, scope=scope, pin=pin)
 
-        lock = self._get_mem_lock(mem_path)
-        with lock:
-            with open(mem_path, "a", encoding="utf-8") as f:
-                f.write(f"\n- {content}\n")
-            self._maybe_compress_memory(mem_path)
-            current_memory = mem_path.read_text(encoding="utf-8").strip()
+        await self.event_bus.publish(Event(
+            type=EventType.MEMORY_UPDATED,
+            source=agent.slug,
+            data={"scope": scope, "content": content[:100]},
+        ))
+
+        await self._maybe_compress_memory(agent_slug, scope)
+
+        current_memory = await self.memory_store.get_memory_text(agent_slug, scope=scope)
 
         logger.debug("Memory write: agent='%s', scope='%s'", agent.slug, scope)
         return json.dumps({
             "saved": True,
             "scope": scope,
-            "file": str(mem_path),
             "current_memory": current_memory,
         })
 
     # ── Memory compression ─────────────────────────────────────────
 
-    def _maybe_compress_memory(self, mem_path: Path) -> None:
-        """If memory file exceeds MEMORY_MAX_LINES, deduplicate via LLM.
-
-        WARNING: compression sends the full memory file contents to the configured
-        LLM provider. If memory contains sensitive data (credentials, PII), set
-        MEMORY_COMPRESS_ENABLED=false in your .env to disable this behaviour.
-        """
-        if not mem_path.exists():
-            return
-        lines = mem_path.read_text(encoding="utf-8").splitlines()
-        if len(lines) <= MEMORY_MAX_LINES:
+    async def _maybe_compress_memory(self, agent_slug: str, scope: str) -> None:
+        """If memory exceeds MEMORY_MAX_LINES, deduplicate unpinned entries via LLM."""
+        count = await self.memory_store.count_entries(agent_slug, scope=scope)
+        if count <= MEMORY_MAX_LINES:
             return
         if not MEMORY_COMPRESS_ENABLED:
             logger.debug("Memory compression disabled (MEMORY_COMPRESS_ENABLED=false); skipping.")
             return
+
+        entries = await self.memory_store.get_memories(agent_slug, scope=scope)
+        unpinned = [e for e in entries if not e.pinned]
+        if not unpinned:
+            return  # All entries are pinned; nothing to compress
+
         logger.warning(
-            "Compressing memory file '%s' (%d lines). "
-            "File contents will be sent to the LLM provider for deduplication. "
+            "Compressing memory for agent='%s', scope='%s' (%d entries, %d unpinned). "
+            "Contents will be sent to the LLM provider for deduplication. "
             "Set MEMORY_COMPRESS_ENABLED=false to disable.",
-            mem_path, len(lines),
+            agent_slug, scope, count, len(unpinned),
         )
+        unpinned_text = "\n".join(f"- {e.content}" for e in unpinned)
         prompt = (
             "The following is a memory file with accumulated facts. "
             "Deduplicate, remove contradictions, and consolidate into a clean bullet list. "
             "Keep all unique facts. Return ONLY the bullet list.\n\n"
-            + mem_path.read_text(encoding="utf-8")
+            + unpinned_text
         )
         try:
-            response = self._call_llm(
+            response = await self._call_llm(
                 [{"role": "user", "content": prompt}], tools=None
             )
             compressed = response.choices[0].message.content.strip()
-            mem_path.write_text(f"# Memory\n\n{compressed}\n", encoding="utf-8")
+            compressed_entries = parse_bullet_entries(compressed)
+            if compressed_entries:
+                # replace_memories preserves pinned entries automatically
+                await self.memory_store.replace_memories(agent_slug, scope, compressed_entries)
         except Exception:
             pass  # Don't crash if compression fails
 
-    def _summarize_messages(self, to_trim: list[dict]) -> str | None:
+    async def _summarize_messages(self, to_trim: list[dict]) -> str | None:
         """LLM-summarize evicted messages. Returns None if disabled or on failure."""
         if not CONTEXT_SUMMARIZE or not to_trim:
             return None
@@ -480,7 +598,7 @@ class Engine:
             + "\n".join(lines)
         )
         try:
-            response = self._call_llm([{"role": "user", "content": prompt}], tools=None)
+            response = await self._call_llm([{"role": "user", "content": prompt}], tools=None)
             return response.choices[0].message.content.strip() or None
         except Exception:
             logger.debug("Context summarization failed; using generic notice.")
@@ -488,74 +606,138 @@ class Engine:
 
     # ── Completion loop ────────────────────────────────────────────
 
-    def _completion_loop(
+    async def _completion_loop(
         self,
         agent: AgentDefinition,
         messages: list[dict],
         depth: int,
+        on_token: Callable[[str], None] | None = None,
     ) -> str:
-        """Call LLM → handle tool calls → loop until text response or safety cap."""
+        """Call LLM → handle tool calls → loop until text response or safety cap.
+
+        If on_token is provided, the final text response is streamed chunk-by-chunk
+        via on_token(chunk). Tool-call iterations are always buffered silently.
+        """
         tools = self._resolve_tools(agent, depth)
         allowed_tools: set[str] = {
             s["function"]["name"] for s in tools
         }
-        self._local.last_usage = {"in": 0, "out": 0}
+        _last_usage.set({"in": 0, "out": 0})
 
         last_tool: str | None = None
 
-        for _ in range(MAX_TOOL_ITERATIONS):
+        for _iter in range(MAX_TOOL_ITERATIONS):
             # Sliding context window with optional summarization
             if len(messages) > MAX_CONTEXT_MESSAGES + 1:
-                keep_tail = messages[-(MAX_CONTEXT_MESSAGES):]
-                to_trim = messages[1 : len(messages) - MAX_CONTEXT_MESSAGES]
-                summary = self._summarize_messages(to_trim)
+                keep_from = max(1, len(messages) - MAX_CONTEXT_MESSAGES)
+                while keep_from > 1 and messages[keep_from].get("role") == "tool":
+                    keep_from -= 1
+
+                to_trim = messages[1:keep_from]
+                keep_tail = messages[keep_from:]
+                summary = await self._summarize_messages(to_trim)
                 notice_text = (
                     f"[Earlier context summarized: {summary}]" if summary
                     else "[Earlier context trimmed to stay within limits.]"
                 )
-                messages = [messages[0], {"role": "system", "content": notice_text}] + keep_tail
+                # Mutate in-place so the caller's reference stays in sync
+                messages[:] = [messages[0], {"role": "system", "content": notice_text}] + keep_tail
                 logger.warning("Context trimmed for agent '%s': evicted %d messages.", agent.slug, len(to_trim))
 
-            response = self._call_llm(messages, tools or None, model=agent.model)
+            _llm_t0 = time.monotonic()
+
+            # Streaming path: only for the final text response (when on_token provided)
+            # We try streaming first; if the response has tool calls the generator yields
+            # nothing, so we fall through to the normal non-streaming path for tool dispatch.
+            if on_token is not None:
+                accumulated_chunks: list[str] = []
+                has_content = False
+                async for chunk in self._call_llm_stream(messages, tools or None, model=agent.model):
+                    on_token(chunk)
+                    accumulated_chunks.append(chunk)
+                    has_content = True
+
+                _llm_latency_ms = (time.monotonic() - _llm_t0) * 1000
+
+                if has_content:
+                    # Pure text response — no tool calls
+                    content = "".join(accumulated_chunks)
+                    usage = _last_usage.get()
+                    await self.event_bus.publish(Event(
+                        type=EventType.LLM_CALL_COMPLETE,
+                        source=agent.slug,
+                        data={
+                            "agent": agent.slug,
+                            "model": agent.model or self.model,
+                            "prompt_tokens": usage["in"],
+                            "completion_tokens": usage["out"],
+                            "tool_calls_count": 0,
+                            "latency_ms": round(_llm_latency_ms, 1),
+                            "iteration": _iter,
+                        },
+                    ))
+                    return content
+
+                # No chunks = tool-call response; fall through to non-streaming dispatch
+                # Reset timer for the non-streaming call below
+                _llm_t0 = time.monotonic()
+
+            response = await self._call_llm(messages, tools or None, model=agent.model)
+            _llm_latency_ms = (time.monotonic() - _llm_t0) * 1000
             usage = getattr(response, "usage", None)
+            _prompt_tokens, _completion_tokens = 0, 0
             if usage:
-                self._local.last_usage["in"] += getattr(usage, "prompt_tokens", 0)
-                self._local.last_usage["out"] += getattr(usage, "completion_tokens", 0)
+                current = _last_usage.get()
+                _prompt_tokens = getattr(usage, "prompt_tokens", 0)
+                _completion_tokens = getattr(usage, "completion_tokens", 0)
+                current["in"] += _prompt_tokens
+                current["out"] += _completion_tokens
             choice = response.choices[0]
             message = choice.message
 
+            await self.event_bus.publish(Event(
+                type=EventType.LLM_CALL_COMPLETE,
+                source=agent.slug,
+                data={
+                    "agent": agent.slug,
+                    "model": agent.model or self.model,
+                    "prompt_tokens": _prompt_tokens,
+                    "completion_tokens": _completion_tokens,
+                    "tool_calls_count": len(message.tool_calls) if message.tool_calls else 0,
+                    "latency_ms": round(_llm_latency_ms, 1),
+                    "iteration": _iter,
+                },
+            ))
+
             # If no tool calls, return text content
             if not message.tool_calls:
-                return message.content or ""
+                content = message.content or ""
+                # Some Ollama models return "{}" as a no-op placeholder instead of real text.
+                # Treat it as empty so the loop can retry or the caller handles it gracefully.
+                if content.strip() in ("{}", "null", "[]"):
+                    content = ""
+                return content
 
-            # Append assistant message with tool calls
-            messages.append(message.model_dump())
+            # Append assistant message with tool calls.
+            # Exclude None fields — Ollama rejects messages with null tool_calls on follow-up turns.
+            messages.append({k: v for k, v in message.model_dump().items() if v is not None})
 
-            # Execute tool calls (parallel if multiple)
+            # Execute tool calls (parallel via asyncio.gather if multiple)
             tool_calls = message.tool_calls
             if len(tool_calls) == 1:
                 tc = tool_calls[0]
                 last_tool = tc.function.name
-                result = self._execute_tool_call(tc, agent, depth, allowed_tools)
+                result = await self._execute_tool_call(tc, agent, depth, allowed_tools)
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
             else:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_PARALLEL_TOOLS) as executor:
-                    futures = {
-                        executor.submit(self._execute_tool_call, tc, agent, depth, allowed_tools): tc
-                        for tc in tool_calls
-                    }
-                    results: dict[str, str] = {}
-                    for future in concurrent.futures.as_completed(futures):
-                        tc = futures[future]
-                        try:
-                            results[tc.id] = future.result()
-                        except Exception as exc:
-                            results[tc.id] = json.dumps({"error": f"Tool execution error: {exc}"})
-                for tc in tool_calls:
+                results = await asyncio.gather(
+                    *(self._execute_tool_call(tc, agent, depth, allowed_tools) for tc in tool_calls)
+                )
+                for tc, result in zip(tool_calls, results):
                     last_tool = tc.function.name
-                    messages.append({"role": "tool", "tool_call_id": tc.id, "content": results[tc.id]})
+                    messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
 
-        usage = self._local.last_usage
+        usage = _last_usage.get()
         return (
             f"[Engine] Reached {MAX_TOOL_ITERATIONS} tool iterations "
             f"(last tool: {last_tool}, tokens in: {usage['in']}, out: {usage['out']}). "
@@ -564,7 +746,7 @@ class Engine:
 
     # ── Session memory extraction ──────────────────────────────────
 
-    def _extract_session_memory(
+    async def _extract_session_memory(
         self, agent: AgentDefinition, messages: list[dict]
     ) -> None:
         """End-of-session LLM call to extract durable facts."""
@@ -594,7 +776,7 @@ class Engine:
         extract_messages = messages + [{"role": "user", "content": extraction_prompt}]
 
         try:
-            response = self._call_llm(extract_messages, tools=None)
+            response = await self._call_llm(extract_messages, tools=None)
             content = response.choices[0].message.content or ""
             content = content.strip()
 
@@ -602,70 +784,103 @@ class Engine:
                 bulk_cap = MEMORY_WRITE_MAX_CHARS * 10
                 if len(content) > bulk_cap:
                     content = content[:bulk_cap] + "\n... [truncated]"
-                mem_path = agent.agent_dir / "memory.md"
-                lock = self._get_mem_lock(mem_path)
-                with lock:
-                    with open(mem_path, "a", encoding="utf-8") as f:
-                        f.write(f"\n{content}\n")
-                    self._maybe_compress_memory(mem_path)
+                entries = parse_bullet_entries(content)
+                if entries:
+                    await self.memory_store.add_bulk(agent.slug, entries, scope="agent")
+                    await self._maybe_compress_memory(agent.slug, "agent")
         except Exception:
             pass  # Don't crash on memory extraction failure
 
     # ── Public API ─────────────────────────────────────────────────
 
-    def run_task(self, agent_slug: str, task: str, depth: int = 0, context: str = "") -> str:
-        """Run a single task with the specified agent (non-interactive)."""
+    async def run_task(
+        self, agent_slug: str, task: str, depth: int = 0, context: str = ""
+    ) -> AgentResult:
+        """Run a single task with the specified agent (non-interactive). Returns AgentResult."""
+        await self._ensure_initialized()
+
         agent = self.agents.get(agent_slug)
         if not agent:
-            return f"[Error] Agent '{agent_slug}' not found."
+            return AgentResult(
+                status=AgentStatus.ERROR,
+                result="",
+                error=f"Agent '{agent_slug}' not found.",
+                agent_slug=agent_slug,
+                task=task,
+            )
 
-        system_prompt = self._build_system_prompt(agent)
-        messages: list[dict] = [{"role": "system", "content": system_prompt}]
-        if context:
-            messages.append({"role": "user", "content": f"[Context from delegating agent]\n{context}"})
-        messages.append({"role": "user", "content": task})
+        await self.event_bus.publish(Event(
+            type=EventType.AGENT_STARTED,
+            source=agent_slug,
+            data={"task": task, "depth": depth},
+        ))
 
-        result = self._completion_loop(agent, messages, depth)
-        self._extract_session_memory(agent, messages)
-        return result
+        try:
+            system_prompt = await self._build_system_prompt(agent)
+            messages: list[dict] = [{"role": "system", "content": system_prompt}]
+            if context:
+                messages.append({"role": "user", "content": f"[Context from delegating agent]\n{context}"})
+            messages.append({"role": "user", "content": task})
 
-    def run_interactive(self, agent_slug: str = "mini-me") -> None:
+            result_text = await self._completion_loop(agent, messages, depth)
+            await self._extract_session_memory(agent, messages)
+
+            usage = _last_usage.get({"in": 0, "out": 0})
+            agent_result = AgentResult(
+                status=AgentStatus.SUCCESS,
+                result=result_text,
+                agent_slug=agent_slug,
+                task=task,
+                metadata={"token_usage": usage},
+            )
+        except Exception as e:
+            agent_result = AgentResult(
+                status=AgentStatus.ERROR,
+                result="",
+                error=str(e),
+                agent_slug=agent_slug,
+                task=task,
+            )
+
+        event_type = EventType.AGENT_COMPLETED if agent_result.succeeded else EventType.AGENT_FAILED
+        await self.event_bus.publish(Event(
+            type=event_type,
+            source=agent_slug,
+            data={"status": agent_result.status.value, "task": task},
+        ))
+
+        return agent_result
+
+    async def run_interactive(self, agent_slug: str = "mini-me") -> None:
         """Interactive REPL loop with the specified agent."""
+        from rich.console import Console
+        from rich.markdown import Markdown
+
+        await self._ensure_initialized()
+
         agent = self.agents.get(agent_slug)
         if not agent:
             print(f"[Error] Agent '{agent_slug}' not found.")
             print(f"Available agents: {', '.join(self.agents.keys())}")
             return
 
-        system_prompt = self._build_system_prompt(agent)
+        system_prompt = await self._build_system_prompt(agent)
         messages: list[dict] = [{"role": "system", "content": system_prompt}]
 
-        print(f"🤖 {self._c(agent.name, self._BOLD, self._GREEN)} ready. (model: {self.model})")
-        print("Type 'quit' or 'exit' to end the session.\n")
+        console = Console()
+        console.print(f"🤖 [bold green]{agent.name}[/bold green] ready. (model: {self.model})")
+        console.print("Type 'quit' or 'exit' to end the session.\n")
 
-        user_prompt = self._c("● You: ", self._BOLD, self._CYAN)
+        user_prompt = self._c_prompt("● You: ", self._BOLD, self._CYAN)
         agent_label = self._c(f"● {agent.name}: ", self._BOLD, self._GREEN)
 
-        # Store session state for crash handlers
-        self._session_agent = agent
-        self._session_messages = messages
-
-        def _atexit_handler() -> None:
-            if self._session_agent is not None:
-                self._extract_session_memory(self._session_agent, self._session_messages)
-                self._session_agent = None  # prevent double-extraction
-
-        atexit.register(_atexit_handler)
-
-        original_sigterm = signal.getsignal(signal.SIGTERM)
-
-        def _sigterm_handler(signum, frame):
-            print("\n[SIGTERM received — saving session memory...]")
-            _atexit_handler()
-            signal.signal(signal.SIGTERM, original_sigterm)
-            signal.raise_signal(signal.SIGTERM)
-
-        signal.signal(signal.SIGTERM, _sigterm_handler)
+        # readline history persistence
+        _HISTORY_FILE = Path.home() / ".copper_history"
+        try:
+            readline.read_history_file(str(_HISTORY_FILE))
+        except FileNotFoundError:
+            pass
+        readline.set_history_length(500)
 
         try:
             while True:
@@ -680,28 +895,64 @@ class Engine:
                     break
 
                 messages.append({"role": "user", "content": user_input})
+
+                accumulated = ""
+                spinner_stopped = False
+
+                def on_token(chunk: str) -> None:
+                    nonlocal accumulated, spinner_stopped
+                    if not spinner_stopped:
+                        stop_fn()
+                        spinner_stopped = True
+                    accumulated += chunk
+
+                t0 = time.monotonic()
                 try:
-                    with self._spinner(agent.name):
-                        response = self._completion_loop(agent, messages, depth=0)
+                    async with self._spinner(agent.name) as stop_fn:
+                        response = await self._completion_loop(
+                            agent, messages, depth=0, on_token=on_token
+                        )
                 except Exception as e:
                     print(f"\n[Error] {e}. Session preserved — type another message.\n")
-                    messages.pop()  # remove the failed user message
+                    messages.pop()
                     continue
-                usage = getattr(self._local, "last_usage", {"in": 0, "out": 0})
+
+                elapsed = time.monotonic() - t0
+                final_text = accumulated or response
+
+                print(f"\n{agent_label}")
+                if final_text:
+                    console.print(Markdown(final_text))
+
+                usage = _last_usage.get({"in": 0, "out": 0})
                 token_info = self._c(
-                    f"↑{usage['in']} ↓{usage['out']}",
+                    f"↑{usage['in']} ↓{usage['out']}  {elapsed:.1f}s",
                     "\033[2m",  # dim
                 )
                 messages.append({"role": "assistant", "content": response})
-                print(f"\n{agent_label}{response}\n{token_info}\n")
+                print(f"{token_info}\n")
 
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, asyncio.CancelledError):
             print("\n")
         finally:
-            print("Extracting session memory...")
-            _atexit_handler()  # None-guard prevents double-run if atexit also fires
+            readline.write_history_file(str(_HISTORY_FILE))
+            async with self._spinner("Saving memory") as _stop:
+                await self._extract_session_memory(agent, messages)
+            await self.close()
             print("Session ended.")
-            signal.signal(signal.SIGTERM, original_sigterm)
+
+    def enable_manager(
+        self, max_concurrent: int = 10, default_timeout: float = 300.0
+    ) -> "AgentManager":
+        """Create and return an AgentManager for concurrent agent runs."""
+        from manager import AgentManager
+        self._manager = AgentManager(
+            engine=self,
+            event_bus=self.event_bus,
+            max_concurrent=max_concurrent,
+            default_timeout=default_timeout,
+        )
+        return self._manager
 
     def list_agents(self) -> list[dict]:
         """Return summary of all loaded agents."""

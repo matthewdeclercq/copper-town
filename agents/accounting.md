@@ -8,7 +8,6 @@ skills:
   - expense-receipts
 delegates_to:
   - google-workspace
-model: xai/grok-4-1-fast-non-reasoning-latest
 memory_guidance: |
   Save: user's preferred expense categories, vendor name patterns (e.g. how "AWS" should appear),
   the expense spreadsheet ID and folder ID if confirmed, preferred receipt naming conventions,

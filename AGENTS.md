@@ -39,9 +39,9 @@ An **agent** is a task-focused assistant with a defined workflow, tools, and ins
 ## Running agents
 
 ```bash
-python run.py                        # interactive with Mini Me
-python run.py accounting             # interactive with Accounting
-python run.py -t "process receipt"   # single-task mode
-python run.py --list-agents          # show this info programmatically
-MODEL=gpt-4o python run.py          # swap provider
+python3 run.py                        # interactive with Mini Me
+python3 run.py accounting             # interactive with Accounting
+python3 run.py -t "process receipt"   # single-task mode
+python3 run.py --list-agents          # show this info programmatically
+MODEL=gpt-4o python3 run.py          # swap provider
 ```

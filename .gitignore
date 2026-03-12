@@ -24,6 +24,9 @@ agents/*/memory.md
 # macOS
 .DS_Store
 
+# Trace files
+traces/
+
 # Editor
 .idea/
 .vscode/

@@ -12,8 +12,6 @@ metadata:
 
 # docs (v1)
 
-> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
-
 ```bash
 gws docs <resource> <method> [flags]
 ```
@@ -22,7 +20,7 @@ gws docs <resource> <method> [flags]
 
 | Command | Description |
 |---------|-------------|
-| [`+write`](../gws-docs-write/SKILL.md) | Append text to a document |
+| `gws-docs-write` skill | Append text to a document |
 
 ## API Resources
 

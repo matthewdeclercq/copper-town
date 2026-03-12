@@ -12,8 +12,6 @@ metadata:
 
 # docs +write
 
-> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
-
 Append text to a document
 
 ## Usage
@@ -45,5 +43,5 @@ gws docs +write --document DOC_ID --text 'Hello, world!'
 
 ## See Also
 
-- [gws-shared](../gws-shared/SKILL.md) — Global flags and auth
-- [gws-docs](../gws-docs/SKILL.md) — All read and write google docs commands
+- `gws-shared` skill — Global flags and auth
+- `gws-docs` skill — All read and write google docs commands

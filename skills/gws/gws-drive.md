@@ -12,8 +12,6 @@ metadata:
 
 # drive (v3)
 
-> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
-
 ```bash
 gws drive <resource> <method> [flags]
 ```
@@ -22,7 +20,7 @@ gws drive <resource> <method> [flags]
 
 | Command | Description |
 |---------|-------------|
-| [`+upload`](../gws-drive-upload/SKILL.md) | Upload a file with automatic metadata |
+| `gws-drive-upload` skill | Upload a file with automatic metadata |
 
 ## API Resources
 

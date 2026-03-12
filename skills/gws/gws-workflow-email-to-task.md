@@ -12,8 +12,6 @@ metadata:
 
 # workflow +email-to-task
 
-> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
-
 Convert a Gmail message into a Google Tasks entry
 
 ## Usage
@@ -43,5 +41,5 @@ gws workflow +email-to-task --message-id MSG_ID --tasklist LIST_ID
 
 ## See Also
 
-- [gws-shared](../gws-shared/SKILL.md) — Global flags and auth
-- [gws-workflow](../gws-workflow/SKILL.md) — All cross-service productivity workflows commands
+- `gws-shared` skill — Global flags and auth
+- `gws-workflow` skill — All cross-service productivity workflows commands

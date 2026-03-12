@@ -12,8 +12,6 @@ metadata:
 
 # chat (v1)
 
-> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
-
 ```bash
 gws chat <resource> <method> [flags]
 ```
@@ -22,7 +20,7 @@ gws chat <resource> <method> [flags]
 
 | Command | Description |
 |---------|-------------|
-| [`+send`](../gws-chat-send/SKILL.md) | Send a message to a space |
+| `gws-chat-send` skill | Send a message to a space |
 
 ## API Resources
 

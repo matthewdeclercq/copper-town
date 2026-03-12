@@ -12,8 +12,6 @@ metadata:
 
 # calendar +agenda
 
-> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
-
 Show upcoming events across all calendars
 
 ## Usage
@@ -48,5 +46,5 @@ gws calendar +agenda --days 3 --calendar 'Work'
 
 ## See Also
 
-- [gws-shared](../gws-shared/SKILL.md) — Global flags and auth
-- [gws-calendar](../gws-calendar/SKILL.md) — All manage calendars and events commands
+- `gws-shared` skill — Global flags and auth
+- `gws-calendar` skill — All manage calendars and events commands

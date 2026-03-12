@@ -12,8 +12,6 @@ metadata:
 
 # sheets +read
 
-> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
-
 Read values from a spreadsheet
 
 ## Usage
@@ -43,5 +41,5 @@ gws sheets +read --spreadsheet ID --range Sheet1
 
 ## See Also
 
-- [gws-shared](../gws-shared/SKILL.md) — Global flags and auth
-- [gws-sheets](../gws-sheets/SKILL.md) — All read and write spreadsheets commands
+- `gws-shared` skill — Global flags and auth
+- `gws-sheets` skill — All read and write spreadsheets commands

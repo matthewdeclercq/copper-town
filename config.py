@@ -15,6 +15,8 @@ SKILLS_DIR = ROOT_DIR / "skills"
 GLOBAL_SKILLS_DIR = SKILLS_DIR / "_global"
 TOOLS_DIR = ROOT_DIR / "tools"
 MEMORY_DIR = ROOT_DIR / "memory"
+MEMORY_DB_PATH = MEMORY_DIR / "copper_town.db"
+TRACES_DIR = ROOT_DIR / "traces"
 
 # -- Model --
 MODEL = os.getenv("MODEL", "xai/grok-4-latest")
@@ -30,10 +32,17 @@ CONTEXT_SUMMARIZE = os.getenv("CONTEXT_SUMMARIZE", "true").lower() == "true"
 LOG_LEVEL = os.getenv("LOG_LEVEL", "WARNING")
 
 # -- Memory --
-MEMORY_MAX_LINES = 100
+MEMORY_MAX_LINES = int(os.getenv("MEMORY_MAX_LINES", "30"))
 MEMORY_MIN_MESSAGES = int(os.getenv("MEMORY_MIN_MESSAGES", "12"))
 MEMORY_WRITE_MAX_CHARS = int(os.getenv("MEMORY_WRITE_MAX_CHARS", "2000"))
 MEMORY_COMPRESS_ENABLED = os.getenv("MEMORY_COMPRESS_ENABLED", "true").lower() == "true"
+
+# -- Delegation --
+DELEGATION_RETRY_COUNT = int(os.getenv("DELEGATION_RETRY_COUNT", "1"))
+
+# -- Concurrency --
+MAX_CONCURRENT_AGENTS = int(os.getenv("MAX_CONCURRENT_AGENTS", "10"))
+AGENT_DEFAULT_TIMEOUT = float(os.getenv("AGENT_DEFAULT_TIMEOUT", "300.0"))
 
 # -- File access sandboxing --
 _raw_allowed = os.getenv("ALLOWED_READ_DIRS", "")
@@ -48,13 +57,18 @@ _PROVIDER_KEY_MAP = {
     "openai": "OPENAI_API_KEY",
     "gemini": "GEMINI_API_KEY",
     "groq": "GROQ_API_KEY",
-    "grok": "XAI_API_KEY",
+    "xai": "XAI_API_KEY",
 }
 
 
-def validate_env() -> None:
-    """Raise SystemExit if the required API key for the chosen provider is missing."""
-    provider = MODEL.split("/")[0].lower()
+def validate_env(model: str | None = None) -> None:
+    """Raise SystemExit if the required API key for the chosen provider is missing.
+
+    Call this explicitly at startup (Engine.__init__ or CLI entry point),
+    not at import time, so tests and tooling can import config freely.
+    """
+    effective_model = model or MODEL
+    provider = effective_model.split("/")[0].lower()
     if provider == "ollama":
         return  # No key needed
     required_key = _PROVIDER_KEY_MAP.get(provider)
@@ -64,6 +78,3 @@ def validate_env() -> None:
             f"Set it in your .env file or shell before running.\n"
             f"Example: {required_key}=your-key-here"
         )
-
-
-validate_env()

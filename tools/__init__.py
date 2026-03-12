@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import inspect
 import json
@@ -124,7 +125,7 @@ class ToolRegistry:
         return sorted(self._tools.keys())
 
     def execute(self, name: str, arguments: dict) -> str:
-        """Execute a tool by name. Returns JSON string result."""
+        """Execute a tool by name (sync). Returns JSON string result."""
         fn = self._tools.get(name)
         if fn is None:
             return json.dumps({"error": f"Unknown tool: {name}"})
@@ -133,5 +134,19 @@ class ToolRegistry:
             if isinstance(result, str):
                 return result
             return json.dumps(result)
+        except Exception as e:
+            return json.dumps({"error": f"{type(e).__name__}: {e}"})
+
+    async def execute_async(self, name: str, arguments: dict) -> str:
+        """Execute a tool by name (async). Wraps sync tools via asyncio.to_thread."""
+        fn = self._tools.get(name)
+        if fn is None:
+            return json.dumps({"error": f"Unknown tool: {name}"})
+        try:
+            if asyncio.iscoroutinefunction(fn):
+                result = await fn(**arguments)
+            else:
+                result = await asyncio.to_thread(fn, **arguments)
+            return result if isinstance(result, str) else json.dumps(result)
         except Exception as e:
             return json.dumps({"error": f"{type(e).__name__}: {e}"})

@@ -6,7 +6,6 @@ tools:
   - read_file
   - list_files
 delegates_to: []
-model: xai/grok-4-1-fast-non-reasoning-latest
 memory_guidance: |
   Save: IDs or paths for frequently accessed files, folders, spreadsheets, or calendars;
   the user's preferred Drive folder structure; standing label/filter rules for Gmail;

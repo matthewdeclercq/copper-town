@@ -12,8 +12,6 @@ metadata:
 
 # gmail +send
 
-> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
-
 Send an email
 
 ## Usage
@@ -47,5 +45,5 @@ gws gmail +send --to alice@example.com --subject 'Hello' --body 'Hi Alice!'
 
 ## See Also
 
-- [gws-shared](../gws-shared/SKILL.md) — Global flags and auth
-- [gws-gmail](../gws-gmail/SKILL.md) — All send, read, and manage email commands
+- `gws-shared` skill — Global flags and auth
+- `gws-gmail` skill — All send, read, and manage email commands

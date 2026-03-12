@@ -12,8 +12,6 @@ metadata:
 
 # sheets +append
 
-> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
-
 Append a row to a spreadsheet
 
 ## Usage
@@ -47,5 +45,5 @@ gws sheets +append --spreadsheet ID --json-values '[["a","b"],["c","d"]]'
 
 ## See Also
 
-- [gws-shared](../gws-shared/SKILL.md) — Global flags and auth
-- [gws-sheets](../gws-sheets/SKILL.md) — All read and write spreadsheets commands
+- `gws-shared` skill — Global flags and auth
+- `gws-sheets` skill — All read and write spreadsheets commands

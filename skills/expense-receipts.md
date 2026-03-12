@@ -10,7 +10,7 @@ When given a receipt file (e.g. from Downloads or Desktop), follow this workflow
 ## IDs
 
 - **Spreadsheet:** `${EXPENSE_SPREADSHEET_ID}`
-- **Sheet/tab name:** `Expenses (2026)` (gid `${EXPENSE_SHEET_GID}`) — always specify this tab explicitly in every read and write operation.
+- **Sheet/tab name:** `Expenses (2026)` — always specify this tab explicitly in every read and write operation.
 - **Drive folder:** `${EXPENSE_DRIVE_FOLDER_ID}`
 
 ## Workflow

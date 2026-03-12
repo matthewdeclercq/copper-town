@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from pathlib import Path
 
 from config import SKILLS_DIR
@@ -34,19 +35,25 @@ def _skill_files() -> list[Path]:
 
 
 _INDEX: dict[str, dict] | None = None
+_INDEX_LOCK = threading.Lock()
 
 
 def _get_index() -> dict[str, dict]:
-    """Build and cache a name-keyed index of all skills."""
+    """Build and cache a name-keyed index of all skills (thread-safe)."""
     global _INDEX
-    if _INDEX is None:
-        _INDEX = {}
+    if _INDEX is not None:
+        return _INDEX
+    with _INDEX_LOCK:
+        if _INDEX is not None:
+            return _INDEX  # another thread built it while we waited
+        idx: dict[str, dict] = {}
         for path in sorted(_skill_files()):
             text = path.read_text(encoding="utf-8")
             front, body = _parse_frontmatter(text)
             name = front.get("name") or path.stem
             desc = front.get("description") or (body.splitlines()[0].lstrip("# ").strip() if body else "")
-            _INDEX[name] = {"description": desc, "path": path, "body": body}
+            idx[name] = {"description": desc, "path": path, "body": body}
+        _INDEX = idx
     return _INDEX
 
 

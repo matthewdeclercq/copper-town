@@ -12,8 +12,6 @@ metadata:
 
 # calendar +insert
 
-> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
-
 create a new event
 
 ## Usage
@@ -51,5 +49,5 @@ gws calendar +insert --summary 'Review' --start ... --end ... --attendee alice@e
 
 ## See Also
 
-- [gws-shared](../gws-shared/SKILL.md) — Global flags and auth
-- [gws-calendar](../gws-calendar/SKILL.md) — All manage calendars and events commands
+- `gws-shared` skill — Global flags and auth
+- `gws-calendar` skill — All manage calendars and events commands

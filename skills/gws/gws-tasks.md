@@ -12,8 +12,6 @@ metadata:
 
 # tasks (v1)
 
-> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
-
 ```bash
 gws tasks <resource> <method> [flags]
 ```

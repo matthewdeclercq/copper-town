@@ -12,8 +12,6 @@ metadata:
 
 # gmail +triage
 
-> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
-
 Show unread inbox summary (sender, subject, date)
 
 ## Usage
@@ -46,5 +44,5 @@ gws gmail +triage --labels
 
 ## See Also
 
-- [gws-shared](../gws-shared/SKILL.md) — Global flags and auth
-- [gws-gmail](../gws-gmail/SKILL.md) — All send, read, and manage email commands
+- `gws-shared` skill — Global flags and auth
+- `gws-gmail` skill — All send, read, and manage email commands

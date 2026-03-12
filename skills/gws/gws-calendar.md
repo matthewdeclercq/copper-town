@@ -12,8 +12,6 @@ metadata:
 
 # calendar (v3)
 
-> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
-
 ```bash
 gws calendar <resource> <method> [flags]
 ```
@@ -22,8 +20,8 @@ gws calendar <resource> <method> [flags]
 
 | Command | Description |
 |---------|-------------|
-| [`+insert`](../gws-calendar-insert/SKILL.md) | create a new event |
-| [`+agenda`](../gws-calendar-agenda/SKILL.md) | Show upcoming events across all calendars |
+| `gws-calendar-insert` skill | create a new event |
+| `gws-calendar-agenda` skill | Show upcoming events across all calendars |
 
 ## API Resources
 

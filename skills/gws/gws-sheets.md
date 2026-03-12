@@ -12,8 +12,6 @@ metadata:
 
 # sheets (v4)
 
-> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
-
 ```bash
 gws sheets <resource> <method> [flags]
 ```
@@ -22,8 +20,10 @@ gws sheets <resource> <method> [flags]
 
 | Command | Description |
 |---------|-------------|
-| [`+append`](../gws-sheets-append/SKILL.md) | Append a row to a spreadsheet |
-| [`+read`](../gws-sheets-read/SKILL.md) | Read values from a spreadsheet |
+| `gws-sheets-read` skill | Read values from a spreadsheet |
+| `gws-sheets-append` skill | Append rows to a spreadsheet |
+| `gws-sheets-update` skill | Write/overwrite values in a range |
+| `gws-sheets-clear` skill | Clear values from a range |
 
 ## API Resources
 
@@ -50,3 +50,27 @@ gws schema sheets.<resource>.<method>
 ```
 
 Use `gws schema` output to build your `--params` and `--json` flags.
+
+## Common Patterns
+
+```bash
+# Read a range
+gws sheets spreadsheets values get --params '{"spreadsheetId":"ID","range":"Sheet1!A1:D10"}'
+
+# Read full sheet with grid data
+gws sheets spreadsheets get --params '{"spreadsheetId":"ID","includeGridData":true,"ranges":["Sheet1!A1:D10"]}'
+
+# Write values (2D array: rows of columns)
+gws sheets spreadsheets values update --params '{"spreadsheetId":"ID","range":"Sheet1!A1","values":[["Name","Score"],["Alice","100"]]}'
+
+# Append rows
+gws sheets spreadsheets values append --params '{"spreadsheetId":"ID","range":"Sheet1!A:A","values":[["New Row","Value"]]}'
+
+# Clear a range
+gws sheets spreadsheets values clear --params '{"spreadsheetId":"ID","range":"Sheet1!A1:D10"}'
+
+# Create a new spreadsheet
+gws sheets spreadsheets create --json '{"properties":{"title":"My Sheet"}}'
+```
+
+> **Prefer the helper skills** (`gws-sheets-read`, `gws-sheets-append`, `gws-sheets-update`, `gws-sheets-clear`) for the most common operations — they document flags, examples, and cautions. Fall back to raw API calls for advanced use cases.

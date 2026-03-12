@@ -12,8 +12,6 @@ metadata:
 
 # gmail (v1)
 
-> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
-
 ```bash
 gws gmail <resource> <method> [flags]
 ```
@@ -22,9 +20,9 @@ gws gmail <resource> <method> [flags]
 
 | Command | Description |
 |---------|-------------|
-| [`+send`](../gws-gmail-send/SKILL.md) | Send an email |
-| [`+triage`](../gws-gmail-triage/SKILL.md) | Show unread inbox summary (sender, subject, date) |
-| [`+watch`](../gws-gmail-watch/SKILL.md) | Watch for new emails and stream them as NDJSON |
+| `gws-gmail-send` skill | Send an email |
+| `gws-gmail-triage` skill | Show unread inbox summary (sender, subject, date) |
+| `gws-gmail-watch` skill | Watch for new emails and stream them as NDJSON |
 
 ## API Resources
 
