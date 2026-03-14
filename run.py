@@ -8,7 +8,7 @@ import asyncio
 import json
 import sys
 
-from engine import Engine
+from copper_town.engine import Engine
 
 
 async def _run_task(engine: Engine, agent: str, task: str) -> int:
@@ -169,7 +169,7 @@ def _print_trace(path, records: list[dict]) -> None:
 
 
 def _cmd_show_trace(file_arg: str | None) -> None:
-    from config import TRACES_DIR
+    from copper_town.config import TRACES_DIR
     from pathlib import Path as _Path
 
     if file_arg:
@@ -202,9 +202,24 @@ def _cmd_show_trace(file_arg: str | None) -> None:
     _print_trace(path, records)
 
 
+async def _cmd_regen_gws_skills(filter_names: list[str] | None) -> None:
+    from copper_town.tools.regen_gws_skills import regen_gws_skills
+    results = await regen_gws_skills(filter_names=filter_names)
+    updated = [r for r in results if r["status"] == "updated"]
+    errors = [r for r in results if r["status"] == "error"]
+    print(f"\nRegenerated {len(updated)}/{len(results)} skills.")
+    for e in errors:
+        print(f"  [ERROR] {e['skill']}: {e['error']}")
+
+
 def main() -> None:
     if len(sys.argv) >= 2 and sys.argv[1] == "show-trace":
         _cmd_show_trace(sys.argv[2] if len(sys.argv) > 2 else None)
+        return
+
+    if len(sys.argv) >= 2 and sys.argv[1] == "regen-gws-skills":
+        filter_names = sys.argv[2:] if len(sys.argv) > 2 else None
+        asyncio.run(_cmd_regen_gws_skills(filter_names))
         return
 
     parser = argparse.ArgumentParser(
@@ -221,6 +236,8 @@ examples:
   python run.py --verbose -t "task"      # stream trace events to stderr
   python run.py --trace -t "task"        # write trace file silently
   python run.py show-trace               # inspect most recent trace
+  python run.py regen-gws-skills        # regenerate all gws skill files
+  python run.py regen-gws-skills gmail  # regenerate only gmail skills
   MODEL=gpt-4o python run.py            # different provider
 """,
     )
@@ -298,7 +315,7 @@ examples:
             print(f"{name:<30} {desc}")
         return
 
-    from tracer import SessionTracer
+    from copper_town.tracer import SessionTracer
     tracer = SessionTracer(
         engine.event_bus,
         args.agent,

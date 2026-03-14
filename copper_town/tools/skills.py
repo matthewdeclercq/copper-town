@@ -3,25 +3,12 @@
 from __future__ import annotations
 
 import json
-import re
 import threading
 from pathlib import Path
 
-from config import SKILLS_DIR
-from tools import tool
-
-
-def _parse_frontmatter(text: str) -> tuple[dict, str]:
-    """Return (frontmatter_dict, body) from a markdown file."""
-    m = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)", text, re.DOTALL)
-    if not m:
-        return {}, text
-    try:
-        import yaml
-        front = yaml.safe_load(m.group(1)) or {}
-    except Exception:
-        front = {}
-    return front, m.group(2).strip()
+from ..config import GLOBAL_SKILLS_DIR, SKILLS_DIR
+from . import tool
+from ..utils import parse_markdown_frontmatter
 
 
 def _skill_files() -> list[Path]:
@@ -30,7 +17,7 @@ def _skill_files() -> list[Path]:
         return []
     return [
         p for p in SKILLS_DIR.rglob("*.md")
-        if "_global" not in p.parts
+        if GLOBAL_SKILLS_DIR.name not in p.parts
     ]
 
 
@@ -47,9 +34,9 @@ def _get_index() -> dict[str, dict]:
         if _INDEX is not None:
             return _INDEX  # another thread built it while we waited
         idx: dict[str, dict] = {}
-        for path in sorted(_skill_files()):
+        for path in sorted(_skill_files(), key=lambda p: (1 if "generated" in p.parts else 0, str(p))):
             text = path.read_text(encoding="utf-8")
-            front, body = _parse_frontmatter(text)
+            front, body = parse_markdown_frontmatter(text)
             name = front.get("name") or path.stem
             desc = front.get("description") or (body.splitlines()[0].lstrip("# ").strip() if body else "")
             idx[name] = {"description": desc, "path": path, "body": body}
@@ -95,3 +82,10 @@ def load_skill(name: str) -> str:
         "error": f"Skill '{name}' not found.",
         "hint": "Call search_skills first to find available skill names.",
     })
+
+
+def invalidate_index() -> None:
+    """Clear the cached skills index so it is rebuilt on next access."""
+    global _INDEX
+    with _INDEX_LOCK:
+        _INDEX = None

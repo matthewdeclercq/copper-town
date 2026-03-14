@@ -7,17 +7,9 @@ from pathlib import Path
 
 import aiosqlite
 
+from .utils import parse_bullet_entries  # noqa: F401 — re-exported for callers
 
-def parse_bullet_entries(text: str) -> list[str]:
-    """Extract entries from bullet-list text. Handles '- ' prefixed and bare lines."""
-    entries = []
-    for line in text.splitlines():
-        line = line.strip()
-        if line.startswith("- "):
-            entries.append(line[2:].strip())
-        elif line:
-            entries.append(line)
-    return entries
+__all__ = ["MemoryStore", "MemoryEntry", "parse_bullet_entries"]
 
 
 @dataclass
@@ -73,6 +65,12 @@ class MemoryStore:
                 raise
         await self._db.commit()
 
+    @property
+    def _conn(self) -> aiosqlite.Connection:
+        if self._db is None:
+            raise RuntimeError("MemoryStore not initialized; call await initialize() first")
+        return self._db
+
     async def close(self) -> None:
         if self._db:
             await self._db.close()
@@ -87,33 +85,38 @@ class MemoryStore:
         pin: bool = False,
     ) -> int | None:
         """Insert a memory entry, skipping exact duplicates. Returns row id or None if duplicate."""
-        if self._db is None:
-            raise RuntimeError("MemoryStore not initialized; call await initialize() first")
-        # Dedup: skip if an identical active entry already exists
-        cursor = await self._db.execute(
-            "SELECT id FROM memories WHERE agent_slug=? AND scope=? AND content=? AND active=1 LIMIT 1",
-            (agent_slug, scope, content),
+        # Atomic dedup: INSERT only if no matching active entry exists
+        cursor = await self._conn.execute(
+            "INSERT INTO memories (agent_slug, scope, content, session_id, pinned) "
+            "SELECT ?, ?, ?, ?, ? "
+            "WHERE NOT EXISTS ("
+            "  SELECT 1 FROM memories WHERE agent_slug=? AND scope=? AND content=? AND active=1"
+            ")",
+            (agent_slug, scope, content, session_id, 1 if pin else 0,
+             agent_slug, scope, content),
         )
-        if await cursor.fetchone():
-            return None
-        cursor = await self._db.execute(
-            "INSERT INTO memories (agent_slug, scope, content, session_id, pinned) VALUES (?, ?, ?, ?, ?)",
-            (agent_slug, scope, content, session_id, 1 if pin else 0),
-        )
-        await self._db.commit()
-        return cursor.lastrowid  # type: ignore[return-value]
+        await self._conn.commit()
+        if cursor.lastrowid and cursor.rowcount:
+            return cursor.lastrowid  # type: ignore[return-value]
+        return None
 
     async def get_memories(
-        self, agent_slug: str, scope: str = "agent"
+        self, agent_slug: str, scope: str = "agent", pinned: bool | None = None
     ) -> list[MemoryEntry]:
-        """Return all active memory entries for an agent+scope."""
-        if self._db is None:
-            raise RuntimeError("MemoryStore not initialized; call await initialize() first")
-        cursor = await self._db.execute(
+        """Return all active memory entries for an agent+scope.
+
+        If *pinned* is True/False, only rows matching that flag are returned.
+        """
+        sql = (
             "SELECT id, agent_slug, scope, content, created_at, session_id, active, pinned "
-            "FROM memories WHERE agent_slug = ? AND scope = ? AND active = 1 ORDER BY id",
-            (agent_slug, scope),
+            "FROM memories WHERE agent_slug = ? AND scope = ? AND active = 1"
         )
+        params: list = [agent_slug, scope]
+        if pinned is not None:
+            sql += " AND pinned = ?"
+            params.append(1 if pinned else 0)
+        sql += " ORDER BY id"
+        cursor = await self._conn.execute(sql, params)
         rows = await cursor.fetchall()
         return [
             MemoryEntry(
@@ -149,9 +152,7 @@ class MemoryStore:
 
     async def count_entries(self, agent_slug: str, scope: str = "agent") -> int:
         """Count active entries for an agent+scope."""
-        if self._db is None:
-            raise RuntimeError("MemoryStore not initialized; call await initialize() first")
-        cursor = await self._db.execute(
+        cursor = await self._conn.execute(
             "SELECT COUNT(*) FROM memories WHERE agent_slug = ? AND scope = ? AND active = 1",
             (agent_slug, scope),
         )
@@ -165,19 +166,17 @@ class MemoryStore:
 
         Pinned entries are preserved so compression cannot evict them.
         """
-        if self._db is None:
-            raise RuntimeError("MemoryStore not initialized; call await initialize() first")
         # Only soft-delete unpinned entries so pinned ones survive compression
-        await self._db.execute(
+        await self._conn.execute(
             "UPDATE memories SET active = 0 "
             "WHERE agent_slug = ? AND scope = ? AND active = 1 AND pinned = 0",
             (agent_slug, scope),
         )
-        await self._db.executemany(
+        await self._conn.executemany(
             "INSERT INTO memories (agent_slug, scope, content) VALUES (?, ?, ?)",
             [(agent_slug, scope, content) for content in new_entries],
         )
-        await self._db.commit()
+        await self._conn.commit()
 
     async def add_bulk(
         self,
@@ -187,5 +186,13 @@ class MemoryStore:
         session_id: str | None = None,
     ) -> None:
         """Insert multiple memory entries, skipping exact duplicates."""
-        for content in entries:
-            await self.add(agent_slug, content, scope=scope, session_id=session_id)
+        await self._conn.executemany(
+            "INSERT INTO memories (agent_slug, scope, content, session_id, pinned) "
+            "SELECT ?, ?, ?, ?, 0 "
+            "WHERE NOT EXISTS ("
+            "  SELECT 1 FROM memories WHERE agent_slug=? AND scope=? AND content=? AND active=1"
+            ")",
+            [(agent_slug, scope, content, session_id,
+              agent_slug, scope, content) for content in entries],
+        )
+        await self._conn.commit()

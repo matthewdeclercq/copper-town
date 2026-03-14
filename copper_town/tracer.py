@@ -8,73 +8,73 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from config import TRACES_DIR
-from events import Event, EventType
+from .config import TRACES_DIR
+from .events import Event, EventType
+from .terminal import BOLD, CYAN, DIM, GREEN, MAG, RED, RESET, YELLOW
 
 if TYPE_CHECKING:
-    from events import EventBus
-
-_RESET = "\033[0m"
-_BOLD = "\033[1m"
-_DIM = "\033[2m"
-_GREEN = "\033[92m"
-_CYAN = "\033[96m"
-_YELLOW = "\033[93m"
-_RED = "\033[91m"
-_MAG = "\033[95m"
+    from .events import EventBus
 
 _EVENT_COLORS = {
-    EventType.AGENT_STARTED: _BOLD + _GREEN,
-    EventType.AGENT_COMPLETED: _BOLD + _GREEN,
-    EventType.AGENT_FAILED: _BOLD + _RED,
-    EventType.LLM_CALL_COMPLETE: _BOLD + _CYAN,
-    EventType.TOOL_CALL_COMPLETE: _BOLD + _YELLOW,
-    EventType.TASK_DELEGATED: _BOLD + _MAG,
-    EventType.MEMORY_UPDATED: _DIM,
+    EventType.AGENT_STARTED:      BOLD + GREEN,
+    EventType.AGENT_COMPLETED:    BOLD + GREEN,
+    EventType.AGENT_FAILED:       BOLD + RED,
+    EventType.LLM_CALL_COMPLETE:  BOLD + CYAN,
+    EventType.TOOL_CALL_COMPLETE: BOLD + YELLOW,
+    EventType.TASK_DELEGATED:     BOLD + MAG,
+    EventType.MEMORY_UPDATED:     DIM,
 }
 _EVENT_LABELS = {
-    EventType.AGENT_STARTED: "AGENT START",
-    EventType.AGENT_COMPLETED: "AGENT DONE ",
-    EventType.AGENT_FAILED: "AGENT FAIL ",
-    EventType.LLM_CALL_COMPLETE: "LLM CALL   ",
+    EventType.AGENT_STARTED:      "AGENT START",
+    EventType.AGENT_COMPLETED:    "AGENT DONE ",
+    EventType.AGENT_FAILED:       "AGENT FAIL ",
+    EventType.LLM_CALL_COMPLETE:  "LLM CALL   ",
     EventType.TOOL_CALL_COMPLETE: "TOOL CALL  ",
-    EventType.TASK_DELEGATED: "DELEGATE   ",
-    EventType.MEMORY_UPDATED: "MEMORY     ",
+    EventType.TASK_DELEGATED:     "DELEGATE   ",
+    EventType.MEMORY_UPDATED:     "MEMORY     ",
+}
+
+# Templates are format_map()-d against a pre-processed copy of event.data.
+# Each EventType entry here eliminates one branch from _format_detail.
+# To add a new EventType: add a row here (and a color/label above).
+_DETAIL_TEMPLATES: dict[EventType, str] = {
+    EventType.AGENT_STARTED:      'task="{task55}"{depth_sfx}',
+    EventType.AGENT_COMPLETED:    "status={status}",
+    EventType.AGENT_FAILED:       "error={error50}",
+    EventType.LLM_CALL_COMPLETE:  (
+        "model={model}  in={prompt_tokens}  out={completion_tokens}"
+        "  tools={tool_calls_count}  {latency_ms:.0f}ms"
+    ),
+    EventType.TOOL_CALL_COMPLETE: "tool={tool}  {latency_ms:.0f}ms  {tool_status}",
+    EventType.TASK_DELEGATED:     '→ {target}  task="{task45}"',
+    EventType.MEMORY_UPDATED:     'scope={scope}  "{content50}"',
 }
 
 
 def _format_detail(event: Event) -> str:
-    d, t = event.data, event.type
-    if t == EventType.AGENT_STARTED:
-        depth = d.get("depth", 0)
-        return f'task="{(d.get("task") or "")[:55]}"' + (f"  depth={depth}" if depth else "")
-    if t == EventType.AGENT_COMPLETED:
-        return f'status={d.get("status", "?")}'
-    if t == EventType.AGENT_FAILED:
-        return f'error={(d.get("error") or d.get("status", "?"))[:50]}'
-    if t == EventType.LLM_CALL_COMPLETE:
-        return (
-            f'model={d.get("model", "?")}  in={d.get("prompt_tokens", 0)}  '
-            f'out={d.get("completion_tokens", 0)}  tools={d.get("tool_calls_count", 0)}  '
-            f'{d.get("latency_ms", 0):.0f}ms'
-        )
-    if t == EventType.TOOL_CALL_COMPLETE:
-        status = "ok" if d.get("success") else f'ERR({d.get("error", "?")})'
-        return f'tool={d.get("tool", "?")}  {d.get("latency_ms", 0):.0f}ms  {status}'
-    if t == EventType.TASK_DELEGATED:
-        return f'→ {d.get("target", "?")}  task="{(d.get("task") or "")[:45]}"'
-    if t == EventType.MEMORY_UPDATED:
-        return f'scope={d.get("scope", "?")}  "{(d.get("content") or "")[:50]}"'
-    return json.dumps(d)[:80]
+    d: dict = {
+        "status": "?", "model": "?", "target": "?", "scope": "?", "tool": "?",
+        "prompt_tokens": 0, "completion_tokens": 0, "tool_calls_count": 0, "latency_ms": 0.0,
+        **event.data,
+    }
+    task = d.get("task") or ""
+    d["task55"] = task[:55]
+    d["task45"] = task[:45]
+    d["error50"] = ((d.get("error") or d.get("status", "?"))[:50])
+    d["content50"] = (d.get("content") or "")[:50]
+    d["depth_sfx"] = f"  depth={d['depth']}" if d.get("depth") else ""
+    d["tool_status"] = "ok" if d.get("success") else f'ERR({d.get("error", "?")})'
+    tpl = _DETAIL_TEMPLATES.get(event.type)
+    return tpl.format_map(d) if tpl else json.dumps(event.data)[:80]
 
 
 def _verbose_line(event: Event, elapsed_s: float) -> str:
     color = _EVENT_COLORS.get(event.type, "")
     label = _EVENT_LABELS.get(event.type, event.type.value[:11].upper())
     return (
-        f"{_DIM}+{elapsed_s:>5.1f}s{_RESET}  "
-        f"{_DIM}{_CYAN}{event.source[:16]:<16}{_RESET}  "
-        f"{color}{label}{_RESET}  {_format_detail(event)}"
+        f"{DIM}+{elapsed_s:>5.1f}s{RESET}  "
+        f"{DIM}{CYAN}{event.source[:16]:<16}{RESET}  "
+        f"{color}{label}{RESET}  {_format_detail(event)}"
     )
 
 

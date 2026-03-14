@@ -103,7 +103,7 @@ class ToolRegistry:
         for info in pkgutil.iter_modules([str(tools_dir)]):
             if info.name.startswith("_"):
                 continue
-            module = importlib.import_module(f"tools.{info.name}")
+            module = importlib.import_module(f".{info.name}", package=__package__)
             for _name, obj in inspect.getmembers(module, inspect.isfunction):
                 if getattr(obj, "_is_tool", False):
                     self._tools[obj.__name__] = obj
@@ -123,19 +123,6 @@ class ToolRegistry:
 
     def list_tools(self) -> list[str]:
         return sorted(self._tools.keys())
-
-    def execute(self, name: str, arguments: dict) -> str:
-        """Execute a tool by name (sync). Returns JSON string result."""
-        fn = self._tools.get(name)
-        if fn is None:
-            return json.dumps({"error": f"Unknown tool: {name}"})
-        try:
-            result = fn(**arguments)
-            if isinstance(result, str):
-                return result
-            return json.dumps(result)
-        except Exception as e:
-            return json.dumps({"error": f"{type(e).__name__}: {e}"})
 
     async def execute_async(self, name: str, arguments: dict) -> str:
         """Execute a tool by name (async). Wraps sync tools via asyncio.to_thread."""

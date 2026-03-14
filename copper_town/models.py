@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
@@ -11,7 +11,6 @@ from typing import Any
 class AgentStatus(str, Enum):
     SUCCESS = "success"
     ERROR = "error"
-    PARTIAL = "partial"
     CANCELLED = "cancelled"
     TIMEOUT = "timeout"
 
@@ -25,7 +24,6 @@ class AgentResult:
     error: str | None = None
     agent_slug: str = ""
     task: str = ""
-    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_tool_response(self) -> str:
         """JSON for LLM tool results (backward compat + status field)."""

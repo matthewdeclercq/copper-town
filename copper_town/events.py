@@ -25,6 +25,7 @@ class EventType(str, Enum):
     TASK_CANCELLED = "task_cancelled"
     LLM_CALL_COMPLETE = "llm_call_complete"
     TOOL_CALL_COMPLETE = "tool_call_complete"
+    TASK_BACKGROUND_STARTED = "task_background_started"
     CUSTOM = "custom"
 
 
@@ -57,6 +58,11 @@ class EventBus:
             self._subscribers[event_type] = [
                 cb for cb in self._subscribers[event_type] if cb is not callback
             ]
+
+    def unsubscribe_all(self, callback: EventCallback) -> None:
+        self._global_subscribers = [
+            cb for cb in self._global_subscribers if cb is not callback
+        ]
 
     async def publish(self, event: Event) -> None:
         """Fire all matching callbacks concurrently. Failed callbacks log warnings."""

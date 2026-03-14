@@ -1,153 +1,149 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working in this repository.
 
-## Project Overview
+## What this is
 
-**Copper-Town** is a LiteLLM-powered multi-agent automation system. A hierarchy of agents handles business tasks (expense receipts, Google Workspace operations, etc.) using a tool-calling engine with persistent memory, dynamic skills, and agent-to-agent delegation.
+**Copper-Town** is a LiteLLM-powered multi-agent automation system. Agents handle business tasks via a tool-calling engine with persistent memory, dynamic skills, and agent-to-agent delegation.
 
 ## Project Structure
 
 ```
 .
-├── agents/                    # Agent definition files (one .md per agent)
-│   ├── mini-me.md             # Top-level orchestrator
-│   ├── accounting.md          # Expense receipts & accounting
-│   └── google-workspace.md    # Google Workspace operations via gws CLI
-├── skills/                    # Reusable skill instructions (markdown)
-│   ├── _global/               # Injected into ALL agents
-│   ├── gws/                   # Google Workspace CLI skills (20+ skill files)
-│   └── expense-receipts.md    # Expense receipt workflow
-├── tools/                     # Python tool framework
-│   ├── __init__.py            # @tool decorator + ToolRegistry
-│   ├── builtin.py             # read_file, list_files
-│   ├── delegation.py          # delegate_to_agent (schema; engine intercepts)
-│   ├── gws.py                 # gws CLI wrapper tool
-│   ├── memory_tool.py         # remember tool (schema; engine intercepts)
-│   ├── skills.py              # search_skills, load_skill (with in-memory index)
-│   └── write_skill.py         # write_skill — creates skills/generated/<name>.md at runtime
-├── skills/
-│   └── generated/             # Runtime-authored skills (written by agents via write_skill)
-│       └── README.md          # Constitution: what agents may/must not write
-├── memory/
-├── traces/                    # Per-session JSONL trace files (auto-created)
-├── engine.py                  # Core: agent loading, tool dispatch, completion loop, delegation
-├── config.py                  # Env loading, paths, constants
-├── tracer.py                  # SessionTracer: JSONL writer + verbose stderr output
 ├── run.py                     # CLI entry point
-├── requirements.txt           # Python dependencies
-├── .env.example               # API key template
-├── AGENTS.md                  # Agent inventory — what exists, when to use each
-└── CLAUDE.md                  # This file
+├── copper_town/               # Main package
+│   ├── __init__.py            # Re-exports Engine
+│   ├── config.py              # Paths, env vars, constants
+│   ├── engine.py              # Completion loop, tool dispatch, delegation
+│   ├── events.py              # EventBus + EventType enum
+│   ├── manager.py             # AgentManager: concurrent runs, timeouts, cancellation
+│   ├── memory_store.py        # SQLite memory: pinned entries, compression, WAL mode
+│   ├── models.py              # AgentResult, AgentStatus, AgentRun
+│   ├── tracer.py              # JSONL trace writer
+│   ├── utils.py               # parse_markdown_frontmatter, interpolate_env
+│   └── tools/                 # @tool-decorated Python modules
+│       ├── __init__.py        # @tool decorator + ToolRegistry
+│       ├── builtin.py         # read_file, list_files
+│       ├── delegation.py      # delegate_to_agent, delegate_background (schemas only)
+│       ├── gws.py             # gws CLI wrapper
+│       ├── memory_tool.py     # remember (schema only)
+│       ├── regen_gws_skills.py # regen-gws-skills subcommand
+│       ├── skills.py          # search_skills, load_skill
+│       ├── web_search.py      # web_search (DuckDuckGo; research agent only)
+│       └── write_skill.py     # write_skill
+│   └── mcp_registry.py    # MCPClientManager: lazy connect, tool dispatch
+├── agents/                    # Agent definitions (one .md per agent)
+├── skills/
+│   ├── _global/               # Injected into ALL agents
+│   ├── gws/                   # Google Workspace CLI skills (30+ files)
+│   ├── generated/             # Runtime-authored skills (write_skill tool)
+│   └── expense-receipts.md
+├── memory/                    # SQLite memory database
+├── traces/                    # Session trace JSONL files
+└── mcp.yml                    # MCP server config (stdio/sse servers)
 ```
 
-## Agent System
+## Agent Definition Format
 
-**Mini Me** is the top-level agent: in charge of all other agents and reports to the user. The full inventory is in [AGENTS.md](AGENTS.md).
-
-### Current Agents
-
-| Agent | Slug | Role |
-|-------|------|------|
-| Mini Me | `mini-me` | Orchestrator; delegates to sub-agents, reports to user |
-| Accounting | `accounting` | Expense receipts and accounting tasks |
-| Google Workspace | `google-workspace` | All Workspace operations via `gws` CLI |
-
-### Agent Definition Format
-
-Each agent is defined in `agents/<slug>.md` with YAML frontmatter + a markdown system prompt body:
+`agents/<slug>.md` — YAML frontmatter + markdown system prompt:
 
 ```yaml
 ---
 name: My Agent
-description: "Short description for the agent inventory."
+description: "One-line description."
 tools:
   - read_file
-  - list_files
 delegates_to:
   - google-workspace
 skills:
   - gws-gmail-send
-model: xai/grok-4-1-fast-non-reasoning-latest   # optional — overrides global MODEL
+mcp_servers:
+  - github
+memory_guidance: |
+  What to save / not save to memory.
+model: xai/grok-4-1-fast-non-reasoning-latest  # optional override
 ---
-
-System prompt body goes here...
+System prompt body...
 ```
 
-- `tools`: tool names the agent may call (always-on: `remember`, `search_skills`, `load_skill`, `delegate_to_agent` if `delegates_to` is set; `write_skill` must be declared explicitly)
-- `delegates_to`: slugs the agent is allowed to delegate to
-- `skills`: skill names injected into the system prompt at startup (searches entire `skills/` tree via `rglob`)
-- `model`: optional per-agent model override (e.g. use Haiku for cheap sub-agents)
+- `tools`: always-on: `remember`, `search_skills`, `load_skill`; delegation tools added automatically when `delegates_to` is set; `write_skill` must be declared explicitly
+- `skills`: found by `rglob` anywhere in `skills/`; `skills/_global/` injected into every agent
+- `mcp_servers`: list of server slugs from `mcp.yml`; MCP tools are lazily connected on first use and shadow same-named `@tool` functions
+- `${VAR_NAME}` in agent bodies and skill files is replaced with the env var value at prompt-build time
 
-### Skills
+## Key Design Decisions
 
-Skills are markdown files in `skills/` with YAML frontmatter (`name`, `description`) and a body of instructions. Skills in `skills/_global/` are injected into **all** agents. Agent-declared skills are found by `rglob` anywhere in `skills/`.
+**Skills index**: `skills/generated/` files sort last in `_get_index()`, so a generated skill with the same `name` as a base skill silently overrides it. This is how the google-workspace agent self-corrects stale gws docs.
 
-The `gws/gws-shared.md` skill is the prerequisite for all `gws` skills (auth, global flags, security rules). Always load it before a specific gws skill.
+**Delegation**:
+- `delegate_to_agent` — synchronous; blocks until sub-agent finishes; passes optional `context` as a system message
+- `delegate_background` — non-blocking; returns `task_id` immediately; completion notification injected at the next REPL turn via `_bg_notifications`; results truncated to `BG_RESULT_MAX_CHARS=800`
 
-### LiteLLM Engine
+**Parallel tool execution**: when the LLM returns multiple tool calls in one response, they run concurrently via `asyncio.gather`. Not configurable.
 
-```bash
-python3 run.py                        # interactive with Mini Me
-python3 run.py accounting             # interactive with Accounting
-python3 run.py -t "process receipt"   # single-task mode
-python3 run.py --list-agents          # show available agents
-python3 run.py --list-tools           # show available tools
-python3 run.py --verbose -t "task"    # stream trace events to stderr in real-time
-python3 run.py --trace -t "task"      # write trace file silently; print path at end
-python3 run.py show-trace             # inspect most recent trace (timeline + summary)
-python3 run.py show-trace <file>      # inspect a specific trace file
-MODEL=gpt-4o python3 run.py           # different provider
-```
+**Memory**: `add()` exact-match deduplicates before insert. `pin=True` makes a fact immune to LLM compression. `replace_memories()` only soft-deletes unpinned rows. Session memory extraction runs only when `len(messages) >= MEMORY_MIN_MESSAGES=12`.
 
-**Key engine features:**
-- Provider-agnostic via `MODEL` env var (Anthropic, OpenAI, Gemini, Groq, Ollama)
-- Agent-to-agent delegation with depth limits (`MAX_DELEGATION_DEPTH=3`), whitelist enforcement, and auto-retry (`DELEGATION_RETRY_COUNT=1`)
-- Tool authorization guard: rejects tool calls not in the agent's allowed set
-- Sliding context window: keeps system prompt + last `MAX_CONTEXT_MESSAGES=40` messages
-- Retry logic: 3 attempts with exponential backoff on `RateLimitError`/`APIConnectionError`
-- REPL exception recovery: API errors print a message and preserve the session
-- Per-agent model override via `model:` frontmatter field
-- Token usage tracking via `contextvars.ContextVar`
-- Persistent memory: SQLite-backed per-agent and global memory; exact-match dedup on every insert; LLM compression when over `MEMORY_MAX_LINES=30`; `pin=True` on `remember` makes a fact immune to compression
-- End-of-session memory extraction: auto-saves durable facts from the conversation; wrapped in a spinner in interactive mode
-- Env var interpolation in skills/agent bodies: `${VAR_NAME}` is replaced with the env var value at prompt-build time
-- Runtime skill authoring: agents with `write_skill` can create `skills/generated/<name>.md` files; index is hot-reloaded immediately
-- Observability: `--verbose` streams colored trace events to stderr in real-time; `--trace` writes a JSONL trace file silently; `show-trace` renders a timeline + summary for post-mortem inspection
-- Interactive REPL UX: streaming token output via `_call_llm_stream`; responses rendered as rich Markdown via the `rich` library; readline history persisted to `~/.copper_history`; elapsed time shown per turn
+**Context window**: sliding window keeps last `MAX_CONTEXT_MESSAGES=40` messages. When `CONTEXT_SUMMARIZE=true`, evicted messages are LLM-summarized and prepended as a system message rather than simply dropped.
 
-## Development Commands
+**Tool output**: truncated to `MAX_TOOL_OUTPUT_CHARS=10000` with a `[truncated N chars]` suffix.
 
-```bash
-pip3 install -r requirements.txt   # Install dependencies
-cp .env.example .env              # Set up API keys
-python3 run.py --list-agents       # Verify agents loaded
-python3 run.py --list-tools        # Verify tools registered
-python3 run.py show-trace          # Inspect most recent trace
-```
+**GWS auth errors**: `gws.py` detects keyring/auth/credential/token keywords in stderr from a non-zero exit and returns a structured error with `"Do not retry this command"`. The google-workspace agent is instructed to stop immediately and report the failure rather than loop. Users must run `gws auth login` to restore credentials.
 
-## Architecture Notes
+**GWS skill regen** (`regen_gws_skills.py`): reads `metadata.openclaw.cliHelp` from frontmatter to get the help command; falls back to deriving it from the skill name (`gws-workflow-file-announce` → `gws workflow +file-announce --help`, `gws-shared` → `gws --help`). Bumps patch version in frontmatter after rewriting.
 
-- **`engine.py`**: `AgentDefinition` dataclass holds slug, name, description, tools, delegates_to, skills, body, and `model`. `_completion_loop` drives the LLM ↔ tool loop with context trimming and the tool authorization check; accepts optional `on_token: Callable[[str], None]` for streaming interactive output (non-interactive callers pass nothing); publishes `LLM_CALL_COMPLETE` with token counts and latency after each LLM call. `_call_llm_stream` yields text chunks via `litellm.acompletion(stream=True)`; silently yields nothing when the response contains tool calls so `_completion_loop` can fall back to the non-streaming path for tool dispatch. `_spinner` context manager yields a `stop_fn()` callable so the first streaming token can kill the spinner immediately. `_execute_tool_call` wraps every dispatch in try/except/finally timing and publishes `TOOL_CALL_COMPLETE` with success/error. `_handle_delegation` passes an optional `context` string from the parent agent's message list and retries up to `DELEGATION_RETRY_COUNT` times on failure. `_handle_remember` accepts `pin=True` to mark facts immune to compression; returns `current_memory` so agents see updated memory immediately. `_maybe_compress_memory` only compresses unpinned entries; pinned rows survive via `replace_memories`.
-- **`tracer.py`**: `SessionTracer` subscribes to all events via `event_bus.subscribe_all()`. Writes one JSON line per event to `traces/<timestamp>_<agent>.jsonl`. With `verbose=True`, prints colored lines to stderr in real-time. `close()` writes `session_close` record and optionally prints the trace path.
-- **`tools/__init__.py`**: `_python_type_to_json_schema` handles `str`, `int`, `float`, `bool`, `list`, `dict`, and `Optional[X]` / `Union[X, None]`.
-- **`tools/skills.py`**: `_get_index()` builds a module-level in-memory index of all skills on first call; subsequent calls are instant. `_INDEX` can be set to `None` under `_INDEX_LOCK` to force a hot-reload (done by `write_skill`).
-- **`tools/write_skill.py`**: Writes `skills/generated/<name>.md`, validates name/frontmatter/body, blocks forbidden patterns, and invalidates the skills index for immediate discoverability.
-- **`tools/delegation.py`**: `delegate_to_agent(agent, task, context="")` — `context` is forwarded as a system message to the sub-agent.
-- **`memory_store.py`**: `add()` does an exact-match dedup SELECT before INSERT; returns `None` on duplicate. `add_bulk()` loops through `add()`. `replace_memories()` only soft-deletes unpinned entries. `get_memory_text()` emits pinned entries first in `[Pinned]...[/Pinned]` tags.
-- **`config.py`**: Key constants — `MAX_TOOL_ITERATIONS=20`, `MAX_DELEGATION_DEPTH=3`, `MAX_CONTEXT_MESSAGES=40`, `MEMORY_MAX_LINES=30` (env-overridable), `DELEGATION_RETRY_COUNT=1` (env-overridable). `TRACES_DIR` points to `traces/` in the repo root.
+**MCP connectors**: external services are wired in via `mcp.yml` — no new Python code per connector. Each entry names a transport (`stdio` or `sse`) and its connection parameters. Env values in `mcp.yml` support `${VAR}` interpolation. `MCPClientManager` (`copper_town/mcp_registry.py`) connects lazily on first tool call and keeps sessions alive for the process lifetime. MCP tool schemas shadow same-named `@tool` functions, enabling gradual migration of the gws connector. The existing `gws` connector is unchanged.
+
+## Interactive REPL Slash Commands
+
+Available in any interactive session (no LLM round-trip):
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Show all slash commands |
+| `/tasks` | List active background tasks with full descriptions |
+| `/cancel [task_id]` | Cancel a background task (omit `task_id` if only one active) |
+| `/memory` | Show this agent's memory entries |
+| `/agents` | List all loaded agents with slug, name, description, and delegation targets |
+| `/clear` | Reset conversation to system prompt only |
+| `/model [name]` | Show current model or switch to a new one |
+
+All handlers live in `run_interactive` in `engine.py`, after the `/cancel` block.
 
 ## Adding a New Agent
 
-1. Create `agents/<slug>.md` with the frontmatter + system prompt.
-2. Add a row to [AGENTS.md](AGENTS.md).
-3. Add `delegates_to: [<slug>]` in any parent agent that should route to it.
-4. If it needs custom tools, add `tools/<slug>.py` with `@tool`-decorated functions.
+1. Create `agents/<slug>.md`
+2. Add a row to `AGENTS.md`
+3. Add `delegates_to: [<slug>]` in any parent agent
+4. If it needs custom tools, add `copper_town/tools/<slug>.py` with `@tool`-decorated functions
 
 ## Adding a New Skill
 
-1. Create `skills/<name>.md` with `---\nname: <name>\ndescription: "..."\n---` frontmatter.
-2. Write the instructions in the body.
-3. Declare it in agent frontmatter (`skills: [<name>]`) — the engine will find it anywhere in `skills/`.
+1. Create `skills/<name>.md` with `name` and `description` frontmatter
+2. Declare it in the agent's `skills:` list — engine finds it anywhere in `skills/`
 
-Agents with `write_skill` in their tools list can also create skills at runtime in `skills/generated/`. See `skills/generated/README.md` for what they may and must not write.
+## Adding an MCP Server
+
+1. Add a server entry to `mcp.yml` with an `agents` list:
+   ```yaml
+   servers:
+     github:
+       transport: stdio
+       command: ["npx", "-y", "@modelcontextprotocol/server-github"]
+       env:
+         GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
+       agents: [mini-me, research]   # or ["*"] for all agents
+   ```
+   Supported transports: `stdio` (command + args) and `sse` (url). Env values support `${VAR}` interpolation.
+2. MCP tools are discovered at connection time and shadow same-named `@tool` functions
+
+Agent frontmatter `mcp_servers` still works and is merged with `mcp.yml` assignments.
+
+## Development
+
+**Always use the project virtualenv** for running, testing, or installing packages:
+```bash
+.venv/bin/python run.py <agent-slug>       # run an agent
+.venv/bin/pip install <package>             # install a dependency
+.venv/bin/python -c "import copper_town"    # quick import check
+```
+Do not use the system Python — it will be missing project dependencies.

@@ -3,28 +3,9 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-from config import ALLOWED_READ_DIRS
-from tools import tool
-
-
-def _resolve_safe(path: str) -> Path | None:
-    """Resolve *path* and confirm it falls under an allowed root.
-
-    Returns the resolved Path on success, or None if access is denied.
-    """
-    try:
-        resolved = Path(path).expanduser().resolve()
-    except Exception:
-        return None
-    for allowed in ALLOWED_READ_DIRS:
-        try:
-            resolved.relative_to(allowed)
-            return resolved
-        except ValueError:
-            continue
-    return None
+from . import tool
+from ..utils import resolve_safe_path
 
 
 @tool
@@ -33,7 +14,7 @@ def read_file(path: str) -> str:
 
     - path: Absolute or relative path to the file to read.
     """
-    p = _resolve_safe(path)
+    p = resolve_safe_path(path)
     if p is None:
         return json.dumps({"error": f"Access denied: '{path}' is outside allowed directories."})
     if not p.exists():
@@ -53,7 +34,7 @@ def list_files(path: str, pattern: str = "*") -> str:
     - path: Directory path to list.
     - pattern: Glob pattern to filter files (default: "*").
     """
-    p = _resolve_safe(path)
+    p = resolve_safe_path(path)
     if p is None:
         return json.dumps({"error": f"Access denied: '{path}' is outside allowed directories."})
     if not p.exists():

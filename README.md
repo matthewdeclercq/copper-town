@@ -1,113 +1,80 @@
 # Copper-Town
 
-A multi-agent AI assistant system. Talk to **Mini Me** — it routes your tasks to the right specialist agents automatically.
+A multi-agent AI assistant. Talk to **Mini Me** — it routes your tasks to the right specialist agents automatically.
 
 ## Setup
 
-**1. Create and activate a virtual environment**
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate      # Mac/Linux
-```
-
-**2. Install dependencies**
-```bash
+python3 -m venv .venv && source .venv/bin/activate
 pip3 install -r requirements.txt
+cp .env.example .env   # add your API key and set MODEL
 ```
-
-**3. Configure your API keys**
-```bash
-cp .env.example .env
-```
-Open `.env` and fill in at least one API key (e.g. `XAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) and set `MODEL` to match.
 
 ## Running
 
 ```bash
-python3 run.py
-```
-
-That's it. You're now talking to Mini Me, which will delegate to sub-agents as needed.
-
-## Other ways to run
-
-```bash
-python3 run.py accounting             # talk directly to the Accounting agent
-python3 run.py -t "process receipt"   # run a single task and exit
-python3 run.py --list-agents          # see all available agents
-python3 run.py --list-tools           # see all available tools
-python3 run.py --verbose              # stream live trace events to stderr
-python3 run.py --trace -t "task"      # write a trace file, print path at end
-python3 run.py show-trace             # inspect the most recent trace
+python3 run.py                        # chat with Mini Me
+python3 run.py google-workspace       # talk directly to an agent
+python3 run.py -t "process receipt"   # one-shot task, then exit
 ```
 
 ## Agents
 
 | Agent | What it does |
 |-------|-------------|
-| **Mini Me** | Top-level assistant — routes tasks, delegates, reports back to you |
-| **Accounting** | Processes expense receipts, logs expenses |
-| **Google Workspace** | Gmail, Drive, Calendar, Sheets, Docs, and more via the `gws` CLI |
+| **Mini Me** | Orchestrator — routes tasks, delegates, reports back |
+| **Accounting** | Expense receipts and logging |
+| **Google Workspace** | Gmail, Drive, Calendar, Sheets, Docs, and more via `gws` CLI |
 
-## Switching AI providers
+## Slash commands
 
-Set `MODEL` in your `.env` to any LiteLLM-supported provider:
+Type these in the interactive REPL for instant control without an LLM round-trip:
 
-| Provider | Example MODEL value |
-|----------|-------------------|
-| xAI (default) | `xai/grok-4-latest` |
-| Anthropic | `anthropic/claude-opus-4-6` |
-| OpenAI | `openai/gpt-4o` |
-| Google Gemini | `gemini/gemini-2.5-pro` |
-| Groq | `groq/llama-3.3-70b-versatile` |
-| Ollama (local) | `ollama/llama3.2` |
+| Command | Description |
+|---------|-------------|
+| `/help` | Show all slash commands |
+| `/tasks` | List active background tasks |
+| `/cancel [task_id]` | Cancel a background task |
+| `/memory` | Show this agent's memory entries |
+| `/agents` | List all available agents |
+| `/clear` | Clear conversation history (keeps system prompt) |
+| `/model [name]` | Show current model or switch to a new one |
 
-Per-agent model overrides are supported via the `model:` field in each agent's `.md` file.
+## Switching providers
 
-## Memory
-
-Agents automatically remember useful facts across sessions (spreadsheet IDs, standing preferences, recurring patterns). Memory is stored in a local SQLite database at `memory/copper_town.db`.
-
-To pin a critical fact so it is never evicted by compression, use the `remember` tool with `pin=True`:
-> "Remember with pin=true that my expense spreadsheet ID is ABC123"
-
-Pinned memories always appear at the top of the agent's context, marked `[Pinned]`.
-
-## Runtime skill creation
-
-Mini Me can write new skills on the fly using the `write_skill` tool. Skills are saved to `skills/generated/` and are immediately searchable. This lets the system build up reusable workflows from user instructions without any code changes.
+Set `MODEL` in `.env` to any [LiteLLM-supported](https://docs.litellm.ai/docs/providers) model string:
+Per-agent model overrides are set via `model:` in the agent's `.md` file.
 
 ## Observability
 
-Every run can be traced. Traces are JSONL files written to `traces/` and contain every LLM call, tool dispatch, delegation, and memory operation with timing.
-
 ```bash
-# Stream colored events to stderr while running
-python3 run.py --verbose -t "process receipt"
-
-# Write a trace file silently (path printed at the end)
-python3 run.py --trace -t "process receipt"
-
-# Inspect the most recent trace
-python3 run.py show-trace
-
-# Inspect a specific file
-python3 run.py show-trace traces/2026-03-11_14-22-05_mini-me.jsonl
+python3 run.py --verbose -t "task"    # stream live events to stderr
+python3 run.py show-trace             # inspect the most recent trace
 ```
 
-`show-trace` prints a timeline (with depth-indented delegation chains) and a summary: duration, agent count, LLM calls, tool calls, token totals, and any failures.
+## Adding MCP servers
 
-## Configuration
+External tools (GitHub, Slack, filesystem, etc.) can be wired in via the [Model Context Protocol](https://modelcontextprotocol.io/) — no new Python code needed per connector.
 
-Key environment variables (all optional, have defaults):
+Add a server entry to `mcp.yml` with an `agents` list to control which agents get the tools:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MODEL` | `xai/grok-4-latest` | LiteLLM model string |
-| `MEMORY_MAX_LINES` | `30` | Entries before LLM compression fires |
-| `MEMORY_COMPRESS_ENABLED` | `true` | Set `false` to disable LLM compression |
-| `DELEGATION_RETRY_COUNT` | `1` | Times to retry a failed sub-agent delegation |
-| `MAX_DELEGATION_DEPTH` | `3` | Max agent → agent nesting depth |
-| `MAX_TOOL_ITERATIONS` | `20` | Tool call budget per agent turn |
-| `MAX_CONTEXT_MESSAGES` | `40` | Sliding context window size |
-| `LOG_LEVEL` | `WARNING` | Python logging level (e.g. `DEBUG`, `INFO`) |
+```yaml
+servers:
+  github:
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-github"]
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
+    agents: [mini-me, research]   # or ["*"] for all agents
+```
+
+That's it — the server connects lazily on first tool call, and its tools appear automatically. Supported transports: `stdio` (command + args) and `sse` (url). Env values support `${VAR}` interpolation from your `.env` file.
+
+You can also assign servers per-agent via `mcp_servers` in agent frontmatter — both sources are merged.
+
+## Keeping gws skills fresh
+
+```bash
+python3 run.py regen-gws-skills          # refresh all 30+ gws skill docs from live CLI help
+python3 run.py regen-gws-skills gmail    # refresh only skills matching "gmail"
+```

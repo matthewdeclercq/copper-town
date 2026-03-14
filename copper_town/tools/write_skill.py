@@ -8,17 +8,16 @@ from pathlib import Path
 
 import yaml
 
-from config import SKILLS_DIR
-from tools import tool
+from ..config import SKILLS_DIR, _PROVIDER_KEY_MAP
+from . import tool
 
 _GENERATED_DIR = SKILLS_DIR / "generated"
 
-_FORBIDDEN_PATTERNS = [
-    r"ANTHROPIC_API_KEY",
-    r"OPENAI_API_KEY",
-    r"XAI_API_KEY",
-    r"GEMINI_API_KEY",
-    r"GROQ_API_KEY",
+# API key patterns derived from config so they stay in sync as new providers are added.
+_API_KEY_PATTERNS = [rf"\b{v}\b" for v in _PROVIDER_KEY_MAP.values()]
+
+# Shell-injection patterns are stable and kept hardcoded.
+_SHELL_PATTERNS = [
     r"subprocess",
     r"rm\s+-rf",
     r"os\.system",
@@ -26,6 +25,8 @@ _FORBIDDEN_PATTERNS = [
     r"exec\s*\(",
     r"__import__",
 ]
+
+_FORBIDDEN_PATTERNS = _API_KEY_PATTERNS + _SHELL_PATTERNS
 
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9\-]*$")
 
@@ -52,6 +53,10 @@ def write_skill(name: str, description: str, body: str) -> str:
             ),
         })
 
+    # Validate body is non-empty
+    if not body.strip():
+        return json.dumps({"ok": False, "error": "Skill body cannot be empty."})
+
     # Block forbidden patterns in body
     for pattern in _FORBIDDEN_PATTERNS:
         if re.search(pattern, body):
@@ -71,28 +76,9 @@ def write_skill(name: str, description: str, body: str) -> str:
 
     skill_path.write_text(file_content, encoding="utf-8")
 
-    # Validate the written file: must have parseable frontmatter and non-empty body
-    written = skill_path.read_text(encoding="utf-8")
-    m = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)", written, re.DOTALL)
-    if not m:
-        skill_path.unlink(missing_ok=True)
-        return json.dumps({"ok": False, "error": "Written file failed frontmatter validation."})
-    try:
-        parsed_front = yaml.safe_load(m.group(1)) or {}
-    except yaml.YAMLError as e:
-        skill_path.unlink(missing_ok=True)
-        return json.dumps({"ok": False, "error": f"Written file has invalid YAML frontmatter: {e}"})
-    if not m.group(2).strip():
-        skill_path.unlink(missing_ok=True)
-        return json.dumps({"ok": False, "error": "Written file has empty body."})
-    if not parsed_front.get("name"):
-        skill_path.unlink(missing_ok=True)
-        return json.dumps({"ok": False, "error": "Written file is missing 'name' in frontmatter."})
-
     # Invalidate the skills index so the new skill is discoverable immediately
-    import tools.skills as skills_mod
-    with skills_mod._INDEX_LOCK:
-        skills_mod._INDEX = None
+    from .skills import invalidate_index
+    invalidate_index()
 
     return json.dumps({
         "ok": True,

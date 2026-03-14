@@ -10,11 +10,11 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from events import Event, EventBus, EventType
-from models import AgentResult, AgentStatus
+from .events import Event, EventBus, EventType
+from .models import AgentResult, AgentStatus
 
 if TYPE_CHECKING:
-    from engine import Engine
+    from .engine import Engine
 
 logger = logging.getLogger("copper_town.manager")
 
@@ -92,12 +92,6 @@ class AgentManager:
         run.status = RunStatus.RUNNING
         run.started_at = datetime.now()
 
-        await self._emit(
-            EventType.AGENT_STARTED,
-            run.agent_slug,
-            {"run_id": run.id, "task": run.task},
-        )
-
         try:
             async with self._semaphore:
                 result = await asyncio.wait_for(
@@ -111,16 +105,6 @@ class AgentManager:
                 RunStatus.COMPLETED if result.succeeded else RunStatus.FAILED
             )
             run.completed_at = datetime.now()
-
-            await self._emit(
-                EventType.AGENT_COMPLETED,
-                run.agent_slug,
-                {
-                    "run_id": run.id,
-                    "status": run.status.value,
-                    "result_status": result.status.value,
-                },
-            )
         except asyncio.TimeoutError:
             run.status = RunStatus.TIMEOUT
             run.completed_at = datetime.now()
@@ -130,11 +114,6 @@ class AgentManager:
                 error="Task timed out",
                 agent_slug=run.agent_slug,
                 task=run.task,
-            )
-            await self._emit(
-                EventType.AGENT_FAILED,
-                run.agent_slug,
-                {"run_id": run.id, "error": "timeout"},
             )
         except asyncio.CancelledError:
             run.status = RunStatus.CANCELLED
@@ -160,11 +139,6 @@ class AgentManager:
                 error=str(e),
                 agent_slug=run.agent_slug,
                 task=run.task,
-            )
-            await self._emit(
-                EventType.AGENT_FAILED,
-                run.agent_slug,
-                {"run_id": run.id, "error": str(e)},
             )
 
     async def cancel(self, run_id: str) -> bool:

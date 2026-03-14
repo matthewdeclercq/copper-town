@@ -5,30 +5,28 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import threading
 
-from config import ALLOWED_READ_DIRS
-from tools import tool
+from . import tool
+from ..utils import resolve_safe_path
 
 # Allow lowercase alphanumeric, hyphens, and + for subcommands.
 # Each token must start with an alphanumeric or + (prevents --flag injection).
 # Matches: "drive files list", "admin-reports activities list", "workflow +standup-report"
 _COMMAND_RE = re.compile(r"^[a-z0-9+][a-z0-9+\-]*(\s[a-z0-9+][a-z0-9+\-]*)*$")
+_gws_lock = threading.Lock()
+_AUTH_KEYWORDS = frozenset({"keyring", "auth", "credential", "token"})
 
 
-def _is_safe_path(path: str) -> bool:
-    """Check that a file path is within the allowed read directories."""
-    from pathlib import Path
+def _validate_json(value: str, field: str) -> str | None:
+    """Return error JSON if value is non-empty invalid JSON, else None."""
+    if not value:
+        return None
     try:
-        resolved = Path(path).expanduser().resolve()
-    except Exception:
-        return False
-    for allowed in ALLOWED_READ_DIRS:
-        try:
-            resolved.relative_to(allowed)
-            return True
-        except ValueError:
-            continue
-    return False
+        json.loads(value)
+    except json.JSONDecodeError:
+        return json.dumps({"error": f"Invalid JSON in '{field}'."})
+    return None
 
 
 @tool
@@ -66,20 +64,16 @@ def gws(
             )
         })
 
-    if params:
-        try:
-            json.loads(params)
-        except json.JSONDecodeError:
-            return json.dumps({"error": "Invalid JSON in 'params'."})
+    if err := _validate_json(params, "params"):
+        return err
+    if err := _validate_json(json_body, "json_body"):
+        return err
 
-    if json_body:
-        try:
-            json.loads(json_body)
-        except json.JSONDecodeError:
-            return json.dumps({"error": "Invalid JSON in 'json_body'."})
-
-    if upload and not _is_safe_path(upload):
+    if upload and not resolve_safe_path(upload):
         return json.dumps({"error": f"Upload path '{upload}' is outside allowed directories."})
+
+    if output and not resolve_safe_path(output):
+        return json.dumps({"error": f"Output path '{output}' is outside allowed directories."})
 
     cmd = ["gws"] + command.split()
 
@@ -103,12 +97,20 @@ def gws(
         cmd.append("--dry-run")
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        with _gws_lock:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     except subprocess.TimeoutExpired:
         return json.dumps({"error": "Command timed out after 120 seconds.", "command": " ".join(cmd)})
 
     if result.returncode != 0:
         error = result.stderr.strip() or result.stdout.strip()
+        err_lower = error.lower()
+        if any(kw in err_lower for kw in _AUTH_KEYWORDS):
+            return json.dumps({
+                "error": "gws authentication failure — credentials could not be read from keyring. "
+                         "The user must run `gws auth login` to refresh credentials. Do not retry this command.",
+                "command": " ".join(cmd),
+            })
         return json.dumps({"error": error, "command": " ".join(cmd)})
 
     output_text = result.stdout.strip()

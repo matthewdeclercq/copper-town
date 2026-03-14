@@ -9,12 +9,13 @@ This directory contains skills written at runtime by agents using the `write_ski
 - Domain-specific terminology or abbreviation glossaries
 - Prompt templates and output format specifications
 - Integration guides for external services (API endpoints, data shapes, field mappings)
+- Corrected `gws` skill overrides using the **exact same name** as the base skill (e.g. `gws-gmail`) when the agent has verified the base skill is stale via fresh `gws --help` output; shell command examples in code blocks are permitted as reference documentation
 
 ## What agents MUST NOT write
 
-- Executable code or shell commands intended to run on the host system
+- Executable Python scripts or arbitrary shell scripts intended to run on the host system (gws CLI commands in code blocks as reference docs are fine)
 - Instructions that reference or expose API keys, credentials, or secrets
-- Skills that override or contradict existing skills in `skills/` (use `search_skills` first)
+- Skills that contradict existing skills in `skills/` without a verified reason (e.g. confirmed via `gws --help` that the base skill is stale)
 - Skills containing harmful, deceptive, or policy-violating content
 - Skills with names that collide with core system files
 

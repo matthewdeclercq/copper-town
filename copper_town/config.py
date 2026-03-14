@@ -9,14 +9,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # -- Paths --
-ROOT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = Path(__file__).resolve().parent.parent
 AGENTS_DIR = ROOT_DIR / "agents"
 SKILLS_DIR = ROOT_DIR / "skills"
 GLOBAL_SKILLS_DIR = SKILLS_DIR / "_global"
-TOOLS_DIR = ROOT_DIR / "tools"
+TOOLS_DIR = Path(__file__).resolve().parent / "tools"
 MEMORY_DIR = ROOT_DIR / "memory"
 MEMORY_DB_PATH = MEMORY_DIR / "copper_town.db"
 TRACES_DIR = ROOT_DIR / "traces"
+MCP_CONFIG_PATH = ROOT_DIR / "mcp.yml"
 
 # -- Model --
 MODEL = os.getenv("MODEL", "xai/grok-4-latest")
@@ -39,6 +40,7 @@ MEMORY_COMPRESS_ENABLED = os.getenv("MEMORY_COMPRESS_ENABLED", "true").lower() =
 
 # -- Delegation --
 DELEGATION_RETRY_COUNT = int(os.getenv("DELEGATION_RETRY_COUNT", "1"))
+BG_RESULT_MAX_CHARS = int(os.getenv("BG_RESULT_MAX_CHARS", "800"))
 
 # -- Concurrency --
 MAX_CONCURRENT_AGENTS = int(os.getenv("MAX_CONCURRENT_AGENTS", "10"))

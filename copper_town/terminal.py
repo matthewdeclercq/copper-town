@@ -1,0 +1,10 @@
+"""ANSI terminal color constants shared across copper_town modules."""
+
+RESET  = "\033[0m"
+BOLD   = "\033[1m"
+DIM    = "\033[2m"
+GREEN  = "\033[92m"
+CYAN   = "\033[96m"
+YELLOW = "\033[93m"
+RED    = "\033[91m"
+MAG    = "\033[95m"

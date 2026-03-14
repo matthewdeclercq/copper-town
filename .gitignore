@@ -19,7 +19,6 @@ env/
 
 # Agent memory (may contain personal data)
 memory/
-agents/*/memory.md
 
 # macOS
 .DS_Store
@@ -32,3 +31,6 @@ traces/
 .vscode/
 *.swp
 *.swo
+
+# gws-credentials
+.gws-service-account/
