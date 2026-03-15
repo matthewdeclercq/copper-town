@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import sys
 import time
+from collections import namedtuple
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -15,39 +16,18 @@ from .terminal import BOLD, CYAN, DIM, GREEN, MAG, RED, RESET, YELLOW
 if TYPE_CHECKING:
     from .events import EventBus
 
-_EVENT_COLORS = {
-    EventType.AGENT_STARTED:      BOLD + GREEN,
-    EventType.AGENT_COMPLETED:    BOLD + GREEN,
-    EventType.AGENT_FAILED:       BOLD + RED,
-    EventType.LLM_CALL_COMPLETE:  BOLD + CYAN,
-    EventType.TOOL_CALL_COMPLETE: BOLD + YELLOW,
-    EventType.TASK_DELEGATED:     BOLD + MAG,
-    EventType.MEMORY_UPDATED:     DIM,
-}
-_EVENT_LABELS = {
-    EventType.AGENT_STARTED:      "AGENT START",
-    EventType.AGENT_COMPLETED:    "AGENT DONE ",
-    EventType.AGENT_FAILED:       "AGENT FAIL ",
-    EventType.LLM_CALL_COMPLETE:  "LLM CALL   ",
-    EventType.TOOL_CALL_COMPLETE: "TOOL CALL  ",
-    EventType.TASK_DELEGATED:     "DELEGATE   ",
-    EventType.MEMORY_UPDATED:     "MEMORY     ",
-}
+_EventFormat = namedtuple("_EventFormat", ["color", "label", "template"])
 
-# Templates are format_map()-d against a pre-processed copy of event.data.
-# Each EventType entry here eliminates one branch from _format_detail.
-# To add a new EventType: add a row here (and a color/label above).
-_DETAIL_TEMPLATES: dict[EventType, str] = {
-    EventType.AGENT_STARTED:      'task="{task55}"{depth_sfx}',
-    EventType.AGENT_COMPLETED:    "status={status}",
-    EventType.AGENT_FAILED:       "error={error50}",
-    EventType.LLM_CALL_COMPLETE:  (
+_EVENT_FORMATS: dict[EventType, _EventFormat] = {
+    EventType.AGENT_STARTED:      _EventFormat(BOLD + GREEN,  "AGENT START", 'task="{task55}"{depth_sfx}'),
+    EventType.AGENT_COMPLETED:    _EventFormat(BOLD + GREEN,  "AGENT DONE ", "status={status}"),
+    EventType.AGENT_FAILED:       _EventFormat(BOLD + RED,    "AGENT FAIL ", "error={error50}"),
+    EventType.LLM_CALL_COMPLETE:  _EventFormat(BOLD + CYAN,   "LLM CALL   ",
         "model={model}  in={prompt_tokens}  out={completion_tokens}"
-        "  tools={tool_calls_count}  {latency_ms:.0f}ms"
-    ),
-    EventType.TOOL_CALL_COMPLETE: "tool={tool}  {latency_ms:.0f}ms  {tool_status}",
-    EventType.TASK_DELEGATED:     '→ {target}  task="{task45}"',
-    EventType.MEMORY_UPDATED:     'scope={scope}  "{content50}"',
+        "  tools={tool_calls_count}  {latency_ms:.0f}ms"),
+    EventType.TOOL_CALL_COMPLETE: _EventFormat(BOLD + YELLOW, "TOOL CALL  ", "tool={tool}  {latency_ms:.0f}ms  {tool_status}"),
+    EventType.TASK_DELEGATED:     _EventFormat(BOLD + MAG,    "DELEGATE   ", '→ {target}  task="{task45}"'),
+    EventType.MEMORY_UPDATED:     _EventFormat(DIM,           "MEMORY     ", 'scope={scope}  "{content50}"'),
 }
 
 
@@ -64,13 +44,14 @@ def _format_detail(event: Event) -> str:
     d["content50"] = (d.get("content") or "")[:50]
     d["depth_sfx"] = f"  depth={d['depth']}" if d.get("depth") else ""
     d["tool_status"] = "ok" if d.get("success") else f'ERR({d.get("error", "?")})'
-    tpl = _DETAIL_TEMPLATES.get(event.type)
-    return tpl.format_map(d) if tpl else json.dumps(event.data)[:80]
+    fmt = _EVENT_FORMATS.get(event.type)
+    return fmt.template.format_map(d) if fmt else json.dumps(event.data)[:80]
 
 
 def _verbose_line(event: Event, elapsed_s: float) -> str:
-    color = _EVENT_COLORS.get(event.type, "")
-    label = _EVENT_LABELS.get(event.type, event.type.value[:11].upper())
+    fmt = _EVENT_FORMATS.get(event.type)
+    color = fmt.color if fmt else ""
+    label = fmt.label if fmt else event.type.value[:11].upper()
     return (
         f"{DIM}+{elapsed_s:>5.1f}s{RESET}  "
         f"{DIM}{CYAN}{event.source[:16]:<16}{RESET}  "
@@ -136,3 +117,116 @@ class SessionTracer:
     @property
     def path(self) -> Path:
         return self._path
+
+
+def format_trace(path: Path, records: list[dict]) -> None:
+    """Pretty-print a trace file's contents to stdout."""
+    _HR = "─" * 70
+
+    session_open = next((r for r in records if r.get("record") == "session_open"), None)
+    session_close = next((r for r in records if r.get("record") == "session_close"), None)
+    events = [r for r in records if r.get("record") == "event"]
+
+    print(f"Trace: {path}")
+    print(_HR)
+
+    # Timeline
+    print("\nTimeline")
+    print(_HR)
+
+    agents_active: set[str] = set()
+    llm_calls = 0
+    tool_calls = 0
+    tool_failures = 0
+    delegations = 0
+    memory_ops = 0
+    total_in = 0
+    total_out = 0
+    failures: list[dict] = []
+
+    for ev in events:
+        etype = ev.get("type", "")
+        source = ev.get("source", "?")
+        elapsed = ev.get("elapsed_s", 0.0)
+        data = ev.get("data", {})
+
+        agents_active.add(source)
+
+        depth = data.get("depth", 0) if etype == "agent_started" else 0
+        indent = "  " + ("  " * depth)
+
+        if etype == "agent_started":
+            task_preview = (data.get("task") or "")[:55]
+            depth_str = f"  depth={depth}" if depth else ""
+            print(f"{indent}+{elapsed:>5.1f}s  {source:<18} STARTED  \"{task_preview}\"{depth_str}")
+        elif etype == "agent_completed":
+            print(f"{indent}+{elapsed:>5.1f}s  {source:<18} DONE     status={data.get('status', '?')}")
+        elif etype == "agent_failed":
+            err = (data.get("error") or data.get("status", "?"))[:50]
+            print(f"{indent}+{elapsed:>5.1f}s  {source:<18} FAILED   error={err}")
+            failures.append({"type": "agent", "source": source, "error": err, "elapsed_s": elapsed})
+        elif etype == "llm_call_complete":
+            llm_calls += 1
+            in_tok = data.get("prompt_tokens", 0)
+            out_tok = data.get("completion_tokens", 0)
+            total_in += in_tok
+            total_out += out_tok
+            latency = data.get("latency_ms", 0)
+            model = data.get("model", "?")
+            tools_count = data.get("tool_calls_count", 0)
+            print(
+                f"{indent}+{elapsed:>5.1f}s  {source:<18} LLM      "
+                f"model={model}  in={in_tok}  out={out_tok}  tools={tools_count}  {latency:.0f}ms"
+            )
+        elif etype == "tool_call_complete":
+            tool_calls += 1
+            success = data.get("success", True)
+            if not success:
+                tool_failures += 1
+            tool_name = data.get("tool", "?")
+            latency = data.get("latency_ms", 0)
+            status = "ok" if success else f"ERR({data.get('error', '?')})"
+            print(f"{indent}+{elapsed:>5.1f}s  {source:<18} TOOL     {tool_name}  {latency:.0f}ms  {status}")
+            if not success:
+                failures.append({
+                    "type": "tool",
+                    "source": source,
+                    "tool": tool_name,
+                    "error": data.get("error", "?"),
+                    "elapsed_s": elapsed,
+                })
+        elif etype == "task_delegated":
+            delegations += 1
+            target = data.get("target", "?")
+            task_preview = (data.get("task") or "")[:45]
+            print(f"{indent}+{elapsed:>5.1f}s  {source:<18} DELEGATE → {target}  \"{task_preview}\"")
+        elif etype == "memory_updated":
+            memory_ops += 1
+            scope = data.get("scope", "?")
+            content = (data.get("content") or "")[:50]
+            print(f"{indent}+{elapsed:>5.1f}s  {source:<18} MEMORY   scope={scope}  \"{content}\"")
+
+    # Summary
+    print(f"\nSummary")
+    print(_HR)
+
+    session_ts = session_open.get("ts", "?") if session_open else "?"
+    duration = session_close.get("elapsed_s", 0.0) if session_close else (events[-1].get("elapsed_s", 0.0) if events else 0.0)
+
+    print(f"  Session start : {session_ts}")
+    print(f"  Duration      : {duration:.1f}s")
+    print(f"  Agents active : {', '.join(sorted(agents_active)) or 'none'}")
+    print(f"  LLM calls     : {llm_calls}")
+    print(f"  Tool calls    : {tool_calls}  (failed: {tool_failures})")
+    print(f"  Delegations   : {delegations}")
+    print(f"  Memory ops    : {memory_ops}")
+    print(f"  Tokens in/out : {total_in} / {total_out}")
+
+    if failures:
+        print(f"\nFailures")
+        print(_HR)
+        for f in failures:
+            if f["type"] == "agent":
+                print(f"  +{f['elapsed_s']:>5.1f}s  AGENT FAILED  {f['source']}  {f['error']}")
+            else:
+                print(f"  +{f['elapsed_s']:>5.1f}s  TOOL FAILED   {f['source']}/{f['tool']}  {f['error']}")

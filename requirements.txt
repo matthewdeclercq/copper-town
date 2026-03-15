@@ -5,5 +5,5 @@ aiofiles>=24.1.0
 aiosqlite>=0.20.0
 rich>=13.0.0
 prompt-toolkit>=3.0.0
-duckduckgo-search>=6.0.0
+ddgs>=6.0.0
 mcp>=1.0.0

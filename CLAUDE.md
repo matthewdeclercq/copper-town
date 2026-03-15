@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for Claude Code when working in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What this is
 
@@ -112,9 +112,8 @@ All handlers live in `run_interactive` in `engine.py`, after the `/cancel` block
 ## Adding a New Agent
 
 1. Create `agents/<slug>.md`
-2. Add a row to `AGENTS.md`
-3. Add `delegates_to: [<slug>]` in any parent agent
-4. If it needs custom tools, add `copper_town/tools/<slug>.py` with `@tool`-decorated functions
+2. Add `delegates_to: [<slug>]` in any parent agent
+3. If it needs custom tools, add `copper_town/tools/<slug>.py` with `@tool`-decorated functions
 
 ## Adding a New Skill
 
@@ -140,10 +139,45 @@ Agent frontmatter `mcp_servers` still works and is merged with `mcp.yml` assignm
 
 ## Development
 
-**Always use the project virtualenv** for running, testing, or installing packages:
+**Setup** (first time):
 ```bash
-.venv/bin/python run.py <agent-slug>       # run an agent
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+cp .env.example .env   # then fill in API keys
+```
+
+**Always use the project virtualenv** for running or installing packages:
+```bash
+.venv/bin/python run.py <agent-slug>       # interactive REPL with an agent
+.venv/bin/python run.py -t "do something"  # single-task, non-interactive
 .venv/bin/pip install <package>             # install a dependency
 .venv/bin/python -c "import copper_town"    # quick import check
 ```
 Do not use the system Python — it will be missing project dependencies.
+
+There are no automated tests or linting configs in this project.
+
+**CLI subcommands** (not routed through argparse):
+```bash
+.venv/bin/python run.py show-trace              # inspect most recent trace
+.venv/bin/python run.py show-trace path/to.jsonl  # inspect a specific trace
+.venv/bin/python run.py regen-gws-skills        # regenerate all gws skill files
+.venv/bin/python run.py regen-gws-skills gmail  # regenerate only matching skills
+```
+
+**Useful flags**:
+```bash
+--verbose / -v    # stream trace events to stderr in real time
+--trace           # write trace file silently; print path at end
+--model NAME      # override MODEL env var for this run
+--list-agents     # show all agents with tools and delegation targets
+--list-tools      # show all registered @tool functions
+--parallel "agent1:task1" "agent2:task2"  # run multiple agents concurrently
+```
+
+**Environment variables** (set in `.env` or shell; see `.env.example`):
+- `MODEL` — LiteLLM model string, e.g. `xai/grok-4-latest`, `anthropic/claude-sonnet-4-20250514` (default: `xai/grok-4-latest`)
+- `XAI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / etc. — provider key for the chosen model
+- `ALLOWED_READ_DIRS` — colon-separated dirs agents may read (default: project root only)
+- `CONTEXT_SUMMARIZE` — `true`/`false`; summarize evicted context instead of dropping it
+- `MEMORY_COMPRESS_ENABLED` — set to `false` if memory contains sensitive data you don't want sent to the LLM

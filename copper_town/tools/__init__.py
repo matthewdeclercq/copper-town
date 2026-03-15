@@ -130,7 +130,7 @@ class ToolRegistry:
         if fn is None:
             return json.dumps({"error": f"Unknown tool: {name}"})
         try:
-            if asyncio.iscoroutinefunction(fn):
+            if inspect.iscoroutinefunction(fn):
                 result = await fn(**arguments)
             else:
                 result = await asyncio.to_thread(fn, **arguments)

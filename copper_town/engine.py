@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import datetime
 import itertools
 import json
 import logging
@@ -47,7 +48,6 @@ from .events import Event, EventBus, EventType
 from .memory_store import MemoryStore
 from .utils import interpolate_env, parse_bullet_entries, parse_markdown_frontmatter
 from .models import AgentResult, AgentStatus
-from .terminal import BOLD, CYAN, GREEN
 from .tools import ToolRegistry
 
 logger = logging.getLogger("copper_town")
@@ -209,14 +209,10 @@ class Engine:
         result = re.sub(r"\n{3,}", "\n\n", "\n".join(sanitized))
         return result
 
-    @staticmethod
-    def _interpolate_env(text: str) -> str:
-        """Replace ${VAR_NAME} placeholders with environment variable values."""
-        return interpolate_env(text, fallback_original=True)
-
     async def _build_system_prompt(self, agent: AgentDefinition) -> str:
         """Assemble agent body + skills + memory into a system prompt."""
-        parts: list[str] = [self._interpolate_env(agent.body)]
+        now = datetime.datetime.now().strftime("%A, %B %-d, %Y %-I:%M %p")
+        parts: list[str] = [f"Current date and time: {now}", interpolate_env(agent.body)]
 
         # Global skills
         if GLOBAL_SKILLS_DIR.exists():
@@ -224,7 +220,7 @@ class Engine:
                 async with aiofiles.open(skill_path, encoding="utf-8") as f:
                     content = (await f.read()).strip()
                 if content:
-                    content = self._interpolate_env(content)
+                    content = interpolate_env(content)
                     parts.append(f"\n\n---\n## Skill: {skill_path.stem}\n\n{content}")
 
         # Agent-specific skills (search entire skills tree)
@@ -239,7 +235,7 @@ class Engine:
             # Strip frontmatter from skill
             m = re.match(r"^---\s*\n.*?\n---\s*\n(.*)", raw, re.DOTALL)
             content = m.group(1).strip() if m else raw
-            content = self._interpolate_env(content)
+            content = interpolate_env(content)
             parts.append(f"\n\n---\n## Skill: {skill_name}\n\n{content}")
 
         # Memory from SQLite
@@ -337,11 +333,6 @@ class Engine:
         "You MUST call delegate_background now to actually dispatch the task. "
         "Do not write text — call the tool immediately."
     )
-
-    @staticmethod
-    def _c(text: str, *codes: str) -> str:
-        from .terminal import RESET as _RESET
-        return "".join(codes) + text + _RESET
 
     @staticmethod
     def _err(msg: str) -> str:
@@ -443,7 +434,8 @@ class Engine:
             except (litellm.RateLimitError, litellm.APIConnectionError) as e:
                 last_exc = e
                 await asyncio.sleep(2 ** attempt)
-        raise last_exc  # type: ignore[misc]
+        assert last_exc is not None
+        raise last_exc
 
     async def _call_llm(
         self,
@@ -881,6 +873,55 @@ class Engine:
         messages[:] = [messages[0], {"role": "system", "content": notice_text}] + keep_tail
         logger.warning("Context trimmed for agent '%s': evicted %d messages.", agent_slug, len(to_trim))
 
+    # ── Completion-loop helpers ────────────────────────────────────
+
+    async def _emit_llm_complete(
+        self,
+        agent_slug: str,
+        model: str | None,
+        prompt_tokens: int,
+        completion_tokens: int,
+        tool_calls_count: int,
+        latency_ms: float,
+        iteration: int,
+    ) -> None:
+        await self.event_bus.publish(Event(
+            type=EventType.LLM_CALL_COMPLETE,
+            source=agent_slug,
+            data={
+                "agent": agent_slug,
+                "model": model or self.model,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "tool_calls_count": tool_calls_count,
+                "latency_ms": round(latency_ms, 1),
+                "iteration": iteration,
+            },
+        ))
+
+    async def _execute_and_append_tool_results(
+        self,
+        tool_calls: list,
+        messages: list[dict],
+        agent: "AgentDefinition",
+        depth: int,
+        allowed_tools: set[str],
+    ) -> str:
+        """Execute tool calls (parallel if multiple), append results, return last tool name."""
+        if len(tool_calls) == 1:
+            tc = tool_calls[0]
+            res = await self._execute_tool_call(tc, agent, depth, allowed_tools)
+            messages.append({"role": "tool", "tool_call_id": tc.id, "content": res})
+            return tc.function.name
+        results = await asyncio.gather(
+            *(self._execute_tool_call(tc, agent, depth, allowed_tools) for tc in tool_calls)
+        )
+        last = ""
+        for tc, res in zip(tool_calls, results):
+            last = tc.function.name
+            messages.append({"role": "tool", "tool_call_id": tc.id, "content": res})
+        return last
+
     # ── Completion loop ────────────────────────────────────────────
 
     async def _completion_loop(
@@ -932,19 +973,10 @@ class Engine:
                     # Pure text response — no tool calls
                     content = stream_result.text
                     usage = _last_usage.get({"in": 0, "out": 0})
-                    await self.event_bus.publish(Event(
-                        type=EventType.LLM_CALL_COMPLETE,
-                        source=agent.slug,
-                        data={
-                            "agent": agent.slug,
-                            "model": agent.model or self.model,
-                            "prompt_tokens": usage["in"],
-                            "completion_tokens": usage["out"],
-                            "tool_calls_count": 0,
-                            "latency_ms": round(_llm_latency_ms, 1),
-                            "iteration": _iter,
-                        },
-                    ))
+                    await self._emit_llm_complete(
+                        agent.slug, agent.model, usage["in"], usage["out"],
+                        0, _llm_latency_ms, _iter,
+                    )
                     if self._apply_hallucination_correction(
                         messages, content, allowed_tools, _hallucination_corrected, agent.slug
                     ):
@@ -954,22 +986,12 @@ class Engine:
                     return content
 
                 if stream_result.tool_calls is not None:
-                    # Tool-call response from stream — build message dict and fall through
-                    # to shared tool-execution code below.
+                    # Tool-call response from stream
                     usage = _last_usage.get({"in": 0, "out": 0})
-                    await self.event_bus.publish(Event(
-                        type=EventType.LLM_CALL_COMPLETE,
-                        source=agent.slug,
-                        data={
-                            "agent": agent.slug,
-                            "model": agent.model or self.model,
-                            "prompt_tokens": usage["in"],
-                            "completion_tokens": usage["out"],
-                            "tool_calls_count": len(stream_result.tool_calls),
-                            "latency_ms": round(_llm_latency_ms, 1),
-                            "iteration": _iter,
-                        },
-                    ))
+                    await self._emit_llm_complete(
+                        agent.slug, agent.model, usage["in"], usage["out"],
+                        len(stream_result.tool_calls), _llm_latency_ms, _iter,
+                    )
                     tool_calls = stream_result.tool_calls
                     messages.append({
                         "role": "assistant",
@@ -986,26 +1008,15 @@ class Engine:
                             for tc in tool_calls
                         ],
                     })
-                    # Execute and continue loop (skip non-streaming response handling)
-                    if len(tool_calls) == 1:
-                        tc = tool_calls[0]
-                        last_tool = tc.function.name
-                        res = await self._execute_tool_call(tc, agent, depth, allowed_tools)
-                        messages.append({"role": "tool", "tool_call_id": tc.id, "content": res})
-                    else:
-                        results = await asyncio.gather(
-                            *(self._execute_tool_call(tc, agent, depth, allowed_tools) for tc in tool_calls)
-                        )
-                        for tc, res in zip(tool_calls, results):
-                            last_tool = tc.function.name
-                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": res})
+                    last_tool = await self._execute_and_append_tool_results(
+                        tool_calls, messages, agent, depth, allowed_tools
+                    )
                     continue
 
                 # Stream yielded neither text nor tool calls — fall back to non-streaming
                 _llm_t0 = time.monotonic()
-                response = await self._call_llm(messages, tools or None, model=agent.model)
-            else:
-                response = await self._call_llm(messages, tools or None, model=agent.model)
+
+            response = await self._call_llm(messages, tools or None, model=agent.model)
 
             _llm_latency_ms = (time.monotonic() - _llm_t0) * 1000
             usage = getattr(response, "usage", None)
@@ -1017,19 +1028,11 @@ class Engine:
             choice = response.choices[0]
             message = choice.message
 
-            await self.event_bus.publish(Event(
-                type=EventType.LLM_CALL_COMPLETE,
-                source=agent.slug,
-                data={
-                    "agent": agent.slug,
-                    "model": agent.model or self.model,
-                    "prompt_tokens": _prompt_tokens,
-                    "completion_tokens": _completion_tokens,
-                    "tool_calls_count": len(message.tool_calls) if message.tool_calls else 0,
-                    "latency_ms": round(_llm_latency_ms, 1),
-                    "iteration": _iter,
-                },
-            ))
+            await self._emit_llm_complete(
+                agent.slug, agent.model, _prompt_tokens, _completion_tokens,
+                len(message.tool_calls) if message.tool_calls else 0,
+                _llm_latency_ms, _iter,
+            )
 
             # If no tool calls, return text content
             if not message.tool_calls:
@@ -1049,20 +1052,9 @@ class Engine:
             # Exclude None fields — Ollama rejects messages with null tool_calls on follow-up turns.
             messages.append({k: v for k, v in message.model_dump().items() if v is not None})
 
-            # Execute tool calls (parallel via asyncio.gather if multiple)
-            tool_calls = message.tool_calls
-            if len(tool_calls) == 1:
-                tc = tool_calls[0]
-                last_tool = tc.function.name
-                result = await self._execute_tool_call(tc, agent, depth, allowed_tools)
-                messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
-            else:
-                results = await asyncio.gather(
-                    *(self._execute_tool_call(tc, agent, depth, allowed_tools) for tc in tool_calls)
-                )
-                for tc, result in zip(tool_calls, results):
-                    last_tool = tc.function.name
-                    messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+            last_tool = await self._execute_and_append_tool_results(
+                message.tool_calls, messages, agent, depth, allowed_tools
+            )
 
         usage = _last_usage.get({"in": 0, "out": 0})
         return (

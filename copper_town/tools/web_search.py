@@ -18,10 +18,10 @@ def web_search(
     - max_results: Number of results to return (default: 5, max: 10)
     """
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
     except ImportError:
         return json.dumps({
-            "error": "duckduckgo-search not installed. Run: pip install duckduckgo-search"
+            "error": "ddgs not installed. Run: pip install ddgs"
         })
 
     max_results = min(max_results, 10)
