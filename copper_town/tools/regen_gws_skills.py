@@ -24,15 +24,15 @@ def _bump_patch(v: str) -> str:
 
 
 def _derive_cli_help(skill_name: str) -> str:
-    """Derive the --help command from a skill name when cliHelp is not in frontmatter."""
-    # Strip gws- prefix
+    """Derive the --help command from a skill name when cli_help is not in frontmatter."""
     rest = skill_name.removeprefix("gws-")
     if not rest or rest == "shared":
         return "gws --help"
-    if rest.startswith("workflow-"):
-        workflow_name = rest[len("workflow-"):]
-        return f"gws workflow +{workflow_name} --help"
-    return f"gws {rest} --help"
+    parts = rest.split("-", 1)
+    if len(parts) == 1:
+        return f"gws {parts[0]} --help"
+    cmd, action = parts
+    return f"gws {cmd} +{action} --help"
 
 
 def _gws_skill_files() -> list[Path]:
@@ -76,10 +76,7 @@ async def regen_gws_skills(
         front, body = parse_markdown_frontmatter(text)
 
         # Determine CLI help command
-        cli_help_cmd: str = (
-            front.get("metadata", {}).get("openclaw", {}).get("cliHelp")
-            or _derive_cli_help(skill_name)
-        )
+        cli_help_cmd: str = front.get("cli_help") or _derive_cli_help(skill_name)
 
         # Run CLI help
         try:

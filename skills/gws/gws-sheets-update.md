@@ -1,13 +1,8 @@
 ---
+cli_help: gws sheets spreadsheets values update --help
+description: 'Google Sheets: Write or overwrite values in a spreadsheet range.'
 name: gws-sheets-update
 version: 1.0.0
-description: "Google Sheets: Write or overwrite values in a spreadsheet range."
-metadata:
-  openclaw:
-    category: "productivity"
-    requires:
-      bins: ["gws"]
-    cliHelp: "gws sheets spreadsheets values update --help"
 ---
 
 # sheets values update

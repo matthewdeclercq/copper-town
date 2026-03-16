@@ -1,13 +1,8 @@
 ---
+cli_help: gws sheets spreadsheets values clear --help
+description: 'Google Sheets: Clear values from a range in a spreadsheet.'
 name: gws-sheets-clear
 version: 1.0.0
-description: "Google Sheets: Clear values from a range in a spreadsheet."
-metadata:
-  openclaw:
-    category: "productivity"
-    requires:
-      bins: ["gws"]
-    cliHelp: "gws sheets spreadsheets values clear --help"
 ---
 
 # sheets values clear

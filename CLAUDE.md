@@ -95,7 +95,7 @@ System prompt body...
 
 **GWS auth errors**: `gws.py` detects keyring/auth/credential/token keywords in stderr from a non-zero exit and returns a structured error with `"Do not retry this command"`. The google-workspace agent is instructed to stop immediately and report the failure rather than loop. Users must run `gws auth login` to restore credentials.
 
-**GWS skill regen** (`regen_gws_skills.py`): reads `metadata.openclaw.cliHelp` from frontmatter to get the help command; falls back to deriving it from the skill name (`gws-workflow-file-announce` → `gws workflow +file-announce --help`, `gws-shared` → `gws --help`). Bumps patch version in frontmatter after rewriting.
+**GWS skill regen** (`regen_gws_skills.py`): reads top-level `cli_help` from frontmatter to get the help command; falls back to deriving it from the skill name (`gws-calendar-agenda` → `gws calendar +agenda --help`, `gws-workflow-file-announce` → `gws workflow +file-announce --help`, `gws-shared` → `gws --help`). Add a top-level `cli_help` field only when the name-based derivation would be wrong. Bumps patch version in frontmatter after rewriting.
 
 **Scheduler/Triggers**: `triggers.yml` defines cron and poll triggers. The `daemon` subcommand runs a tick loop (`SCHEDULER_TICK_INTERVAL=30s`) that checks each trigger. Cron triggers fire if the most recent scheduled time is within 2x tick interval and hasn't been fired yet. Poll triggers call a `PollChecker` subclass; if it returns a truthy string, the trigger fires with `${poll_result}` interpolation. `state.running` prevents overlapping fires. No persistent state — all timing resets on restart.
 
