@@ -1,0 +1,24 @@
+# Trigger definitions for the Copper-Town scheduler daemon.
+#
+# triggers:
+#   # Cron trigger — fires on a schedule (cron expression)
+#   daily-summary:
+#     type: cron
+#     agent: mini-me
+#     task: "Summarize today's activity."
+#     schedule: "0 18 * * *"          # 6 PM daily
+#     timeout: 120                     # seconds (default: 300)
+#     enabled: true
+#
+#   # Poll trigger — fires when a checker returns a truthy result
+#   new-receipts:
+#     type: poll
+#     agent: accounting
+#     task: "Process new receipt: ${poll_result}"
+#     checker: gmail-label            # registered PollChecker name
+#     checker_args:                    # passed as kwargs to checker.check()
+#       label: "Receipts/Unprocessed"
+#     interval: 300                    # seconds between checks (default: 60)
+#     enabled: true
+
+triggers: {}

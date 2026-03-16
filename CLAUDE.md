@@ -16,6 +16,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 │   ├── config.py              # Paths, env vars, constants
 │   ├── engine.py              # Completion loop, tool dispatch, delegation
 │   ├── events.py              # EventBus + EventType enum
+│   ├── background.py          # BackgroundTaskManager: task state, notifications, cancellation
+│   ├── repl.py                # REPLSession: interactive prompt, spinner, slash-command dispatch
+│   ├── terminal.py            # ANSI color constants
 │   ├── manager.py             # AgentManager: concurrent runs, timeouts, cancellation
 │   ├── memory_store.py        # SQLite memory: pinned entries, compression, WAL mode
 │   ├── models.py              # AgentResult, AgentStatus, AgentRun
@@ -29,8 +32,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 │       ├── memory_tool.py     # remember (schema only)
 │       ├── regen_gws_skills.py # regen-gws-skills subcommand
 │       ├── skills.py          # search_skills, load_skill
-│       ├── web_search.py      # web_search (DuckDuckGo; research agent only)
+│       ├── web_search.py      # web_search (ddgs/DuckDuckGo; web-surfer agent only)
 │       └── write_skill.py     # write_skill
+│   ├── polling.py          # PollChecker ABC + registry for trigger checkers
+│   ├── scheduler.py        # Scheduler: reads triggers.yml, fires cron/poll triggers
 │   └── mcp_registry.py    # MCPClientManager: lazy connect, tool dispatch
 ├── agents/                    # Agent definitions (one .md per agent)
 ├── skills/
@@ -40,6 +45,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 │   └── expense-receipts.md
 ├── memory/                    # SQLite memory database
 ├── traces/                    # Session trace JSONL files
+├── triggers.yml               # Trigger definitions for scheduler daemon
 └── mcp.yml                    # MCP server config (stdio/sse servers)
 ```
 
@@ -77,7 +83,7 @@ System prompt body...
 
 **Delegation**:
 - `delegate_to_agent` — synchronous; blocks until sub-agent finishes; passes optional `context` as a system message
-- `delegate_background` — non-blocking; returns `task_id` immediately; completion notification injected at the next REPL turn via `_bg_notifications`; results truncated to `BG_RESULT_MAX_CHARS=800`
+- `delegate_background` — non-blocking; returns `task_id` immediately; completion notification injected at the next REPL turn via `BackgroundTaskManager` (`engine._bg`); results truncated to `BG_RESULT_MAX_CHARS=800`
 
 **Parallel tool execution**: when the LLM returns multiple tool calls in one response, they run concurrently via `asyncio.gather`. Not configurable.
 
@@ -90,6 +96,10 @@ System prompt body...
 **GWS auth errors**: `gws.py` detects keyring/auth/credential/token keywords in stderr from a non-zero exit and returns a structured error with `"Do not retry this command"`. The google-workspace agent is instructed to stop immediately and report the failure rather than loop. Users must run `gws auth login` to restore credentials.
 
 **GWS skill regen** (`regen_gws_skills.py`): reads `metadata.openclaw.cliHelp` from frontmatter to get the help command; falls back to deriving it from the skill name (`gws-workflow-file-announce` → `gws workflow +file-announce --help`, `gws-shared` → `gws --help`). Bumps patch version in frontmatter after rewriting.
+
+**Scheduler/Triggers**: `triggers.yml` defines cron and poll triggers. The `daemon` subcommand runs a tick loop (`SCHEDULER_TICK_INTERVAL=30s`) that checks each trigger. Cron triggers fire if the most recent scheduled time is within 2x tick interval and hasn't been fired yet. Poll triggers call a `PollChecker` subclass; if it returns a truthy string, the trigger fires with `${poll_result}` interpolation. `state.running` prevents overlapping fires. No persistent state — all timing resets on restart.
+
+**Poll checkers**: `PollChecker` ABC in `polling.py` with `check(**kwargs) -> str | None`. Register via `register_checker(name, cls)`. Checkers get `setup()`/`teardown()` lifecycle calls from the scheduler. `NullChecker` is the only built-in (always returns `None`).
 
 **MCP connectors**: external services are wired in via `mcp.yml` — no new Python code per connector. Each entry names a transport (`stdio` or `sse`) and its connection parameters. Env values in `mcp.yml` support `${VAR}` interpolation. `MCPClientManager` (`copper_town/mcp_registry.py`) connects lazily on first tool call and keeps sessions alive for the process lifetime. MCP tool schemas shadow same-named `@tool` functions, enabling gradual migration of the gws connector. The existing `gws` connector is unchanged.
 
@@ -107,7 +117,7 @@ Available in any interactive session (no LLM round-trip):
 | `/clear` | Reset conversation to system prompt only |
 | `/model [name]` | Show current model or switch to a new one |
 
-All handlers live in `run_interactive` in `engine.py`, after the `/cancel` block.
+All handlers live in `REPLSession` in `repl.py`.
 
 ## Adding a New Agent
 
@@ -130,12 +140,52 @@ All handlers live in `run_interactive` in `engine.py`, after the `/cancel` block
        command: ["npx", "-y", "@modelcontextprotocol/server-github"]
        env:
          GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
-       agents: [mini-me, research]   # or ["*"] for all agents
+       agents: [mini-me, web-surfer]   # or ["*"] for all agents
    ```
    Supported transports: `stdio` (command + args) and `sse` (url). Env values support `${VAR}` interpolation.
 2. MCP tools are discovered at connection time and shadow same-named `@tool` functions
 
 Agent frontmatter `mcp_servers` still works and is merged with `mcp.yml` assignments.
+
+## Adding a Trigger
+
+Add an entry to `triggers.yml`:
+```yaml
+triggers:
+  my-cron-trigger:
+    type: cron
+    agent: mini-me
+    task: "Do something on schedule."
+    schedule: "0 9 * * 1-5"    # cron expression
+    timeout: 120
+    enabled: true
+
+  my-poll-trigger:
+    type: poll
+    agent: accounting
+    task: "Process: ${poll_result}"
+    checker: my-checker          # registered PollChecker name
+    checker_args:
+      label: "some-value"
+    interval: 300                # seconds between checks
+    enabled: true
+```
+
+## Adding a Poll Checker
+
+1. Create a `PollChecker` subclass (e.g., in `copper_town/tools/` or a new module)
+2. Register it in `copper_town/polling.py`:
+   ```python
+   from copper_town.polling import PollChecker, register_checker
+
+   class MyChecker(PollChecker):
+       async def check(self, **kwargs) -> str | None:
+           # Return a string to fire the trigger, None to skip
+           return None
+
+   register_checker("my-checker", MyChecker)
+   ```
+3. Reference it by name in `triggers.yml` `checker` field
 
 ## Development
 
@@ -163,6 +213,8 @@ There are no automated tests or linting configs in this project.
 .venv/bin/python run.py show-trace path/to.jsonl  # inspect a specific trace
 .venv/bin/python run.py regen-gws-skills        # regenerate all gws skill files
 .venv/bin/python run.py regen-gws-skills gmail  # regenerate only matching skills
+.venv/bin/python run.py daemon                  # run scheduler daemon
+.venv/bin/python run.py daemon -v               # daemon with verbose trace output
 ```
 
 **Useful flags**:
@@ -181,3 +233,5 @@ There are no automated tests or linting configs in this project.
 - `ALLOWED_READ_DIRS` — colon-separated dirs agents may read (default: project root only)
 - `CONTEXT_SUMMARIZE` — `true`/`false`; summarize evicted context instead of dropping it
 - `MEMORY_COMPRESS_ENABLED` — set to `false` if memory contains sensitive data you don't want sent to the LLM
+- `SCHEDULER_TICK_INTERVAL` — seconds between scheduler ticks (default: `30.0`)
+- `TRIGGER_DEFAULT_TIMEOUT` — default timeout for trigger-fired tasks in seconds (default: `300.0`)

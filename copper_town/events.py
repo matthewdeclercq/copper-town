@@ -26,6 +26,9 @@ class EventType(str, Enum):
     LLM_CALL_COMPLETE = "llm_call_complete"
     TOOL_CALL_COMPLETE = "tool_call_complete"
     TASK_BACKGROUND_STARTED = "task_background_started"
+    TRIGGER_FIRED = "trigger_fired"
+    TRIGGER_COMPLETED = "trigger_completed"
+    TRIGGER_ERROR = "trigger_error"
     CUSTOM = "custom"
 
 

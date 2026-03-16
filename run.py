@@ -100,6 +100,37 @@ async def _cmd_regen_gws_skills(filter_names: list[str] | None) -> None:
         print(f"  [ERROR] {e['skill']}: {e['error']}")
 
 
+async def _cmd_daemon() -> None:
+    import signal
+    from copper_town.scheduler import Scheduler
+    from copper_town.tracer import SessionTracer
+
+    # Parse daemon-specific flags from argv (not routed through argparse)
+    verbose = "-v" in sys.argv or "--verbose" in sys.argv
+    model = None
+    for i, arg in enumerate(sys.argv):
+        if arg == "--model" and i + 1 < len(sys.argv):
+            model = sys.argv[i + 1]
+    engine = Engine(model=model)
+    tracer = SessionTracer(
+        engine.event_bus,
+        "daemon",
+        verbose=verbose,
+        silent_trace=True,
+    )
+    scheduler = Scheduler(engine)
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, scheduler.request_shutdown)
+
+    try:
+        await scheduler.run()
+    finally:
+        tracer.close()
+        await engine.close()
+
+
 def main() -> None:
     if len(sys.argv) >= 2 and sys.argv[1] == "show-trace":
         _cmd_show_trace(sys.argv[2] if len(sys.argv) > 2 else None)
@@ -108,6 +139,10 @@ def main() -> None:
     if len(sys.argv) >= 2 and sys.argv[1] == "regen-gws-skills":
         filter_names = sys.argv[2:] if len(sys.argv) > 2 else None
         asyncio.run(_cmd_regen_gws_skills(filter_names))
+        return
+
+    if len(sys.argv) >= 2 and sys.argv[1] == "daemon":
+        asyncio.run(_cmd_daemon())
         return
 
     parser = argparse.ArgumentParser(
@@ -126,6 +161,8 @@ examples:
   python run.py show-trace               # inspect most recent trace
   python run.py regen-gws-skills        # regenerate all gws skill files
   python run.py regen-gws-skills gmail  # regenerate only gmail skills
+  python run.py daemon                   # run scheduler daemon
+  python run.py daemon -v                # scheduler with verbose trace output
   MODEL=gpt-4o python run.py            # different provider
 """,
     )

@@ -18,6 +18,7 @@ MEMORY_DIR = ROOT_DIR / "memory"
 MEMORY_DB_PATH = MEMORY_DIR / "copper_town.db"
 TRACES_DIR = ROOT_DIR / "traces"
 MCP_CONFIG_PATH = ROOT_DIR / "mcp.yml"
+TRIGGERS_CONFIG_PATH = ROOT_DIR / "triggers.yml"
 
 # -- Model --
 MODEL = os.getenv("MODEL", "xai/grok-4-latest")
@@ -45,6 +46,10 @@ BG_RESULT_MAX_CHARS = int(os.getenv("BG_RESULT_MAX_CHARS", "800"))
 # -- Concurrency --
 MAX_CONCURRENT_AGENTS = int(os.getenv("MAX_CONCURRENT_AGENTS", "10"))
 AGENT_DEFAULT_TIMEOUT = float(os.getenv("AGENT_DEFAULT_TIMEOUT", "300.0"))
+
+# -- Scheduler --
+SCHEDULER_TICK_INTERVAL = float(os.getenv("SCHEDULER_TICK_INTERVAL", "30.0"))
+TRIGGER_DEFAULT_TIMEOUT = float(os.getenv("TRIGGER_DEFAULT_TIMEOUT", "300.0"))
 
 # -- File access sandboxing --
 _raw_allowed = os.getenv("ALLOWED_READ_DIRS", "")

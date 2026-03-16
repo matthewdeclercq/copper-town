@@ -326,8 +326,16 @@ class Engine:
         return schemas
 
     # ── Hallucination detection ─────────────────────────────────────
-    # Matches present/future-tense delegation language in a text response.
-    _HALLUCINATION_PATTERN = re.compile(r"\b(dispatch\w*|delegat\w*)\b", re.IGNORECASE)
+    # Matches first-person delegation intent (e.g. "I'll delegate…", "dispatching your
+    # task now…") but NOT explanatory mentions ("you can delegate", "delegation works by…").
+    _HALLUCINATION_PATTERN = re.compile(
+        r"(?:"
+        r"I(?:'ll|'m| will| am| have| can)\s+(?:dispatch|delegat)\w*"  # "I'll delegate…"
+        r"|(?:dispatch|delegat)\w*\s+(?:this|the|that|a|your|it)\s+(?:task|request|job|work)"  # "delegating your task"
+        r"|(?:let me|going to|about to)\s+(?:dispatch|delegat)\w*"  # "let me delegate"
+        r")",
+        re.IGNORECASE,
+    )
     _CORRECTION_MESSAGE = (
         "[Engine] You described delegating a task but did not call any tool. "
         "You MUST call delegate_background now to actually dispatch the task. "
@@ -358,7 +366,12 @@ class Engine:
         messages.append({"role": "user", "content": self._CORRECTION_MESSAGE})
         return True
 
+    # Long, structured responses are explanations, not hallucinated actions.
+    _HALLUCINATION_MAX_LEN = 400
+
     def _detect_hallucinated_delegation(self, content: str, agent_slug: str) -> bool:
+        if len(content) > self._HALLUCINATION_MAX_LEN:
+            return False
         if self._HALLUCINATION_PATTERN.search(content):
             logger.warning(
                 "Hallucinated delegation detected for agent '%s' — injecting correction",

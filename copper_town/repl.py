@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .terminal import BOLD, CYAN, GREEN, RESET
+from .terminal import BOLD, CYAN, DIM, GREEN, RESET, YELLOW
 
 if TYPE_CHECKING:
     from .engine import Engine
@@ -216,11 +216,20 @@ class REPLSession:
                     continue
 
                 elapsed = time.monotonic() - t0
-                # Prefer the loop's return value: if hallucination correction fired,
-                # `response` is the post-correction text; `accumulated` is the hallucinated text.
+                # If hallucination correction fired, response differs from accumulated.
+                # Show the original (dimmed) so the user can still see what the agent said.
+                corrected = (
+                    accumulated
+                    and response
+                    and accumulated.strip() != response.strip()
+                )
                 final_text = response or accumulated
 
                 print(f"\n{agent_label}")
+                if corrected:
+                    print(f"{DIM}[original — auto-corrected]{RESET}")
+                    console.print(Markdown(accumulated))
+                    print(f"{YELLOW}[corrected]{RESET}")
                 if final_text:
                     console.print(Markdown(final_text))
 

@@ -28,6 +28,9 @@ _EVENT_FORMATS: dict[EventType, _EventFormat] = {
     EventType.TOOL_CALL_COMPLETE: _EventFormat(BOLD + YELLOW, "TOOL CALL  ", "tool={tool}  {latency_ms:.0f}ms  {tool_status}"),
     EventType.TASK_DELEGATED:     _EventFormat(BOLD + MAG,    "DELEGATE   ", '→ {target}  task="{task45}"'),
     EventType.MEMORY_UPDATED:     _EventFormat(DIM,           "MEMORY     ", 'scope={scope}  "{content50}"'),
+    EventType.TRIGGER_FIRED:      _EventFormat(BOLD + MAG,    "TRIG FIRE  ", 'name={name}  agent={agent}  type={trigger_type}'),
+    EventType.TRIGGER_COMPLETED:  _EventFormat(BOLD + GREEN,  "TRIG DONE  ", 'name={name}  status={status}'),
+    EventType.TRIGGER_ERROR:      _EventFormat(BOLD + RED,    "TRIG ERROR ", 'name={name}  error={error50}'),
 }
 
 
@@ -42,6 +45,9 @@ def _format_detail(event: Event) -> str:
     d["task45"] = task[:45]
     d["error50"] = ((d.get("error") or d.get("status", "?"))[:50])
     d["content50"] = (d.get("content") or "")[:50]
+    d["name"] = d.get("name", "?")
+    d["agent"] = d.get("agent", "?")
+    d["trigger_type"] = d.get("trigger_type", "?")
     d["depth_sfx"] = f"  depth={d['depth']}" if d.get("depth") else ""
     d["tool_status"] = "ok" if d.get("success") else f'ERR({d.get("error", "?")})'
     fmt = _EVENT_FORMATS.get(event.type)
@@ -140,6 +146,7 @@ def format_trace(path: Path, records: list[dict]) -> None:
     tool_failures = 0
     delegations = 0
     memory_ops = 0
+    trigger_fires = 0
     total_in = 0
     total_out = 0
     failures: list[dict] = []
@@ -205,6 +212,21 @@ def format_trace(path: Path, records: list[dict]) -> None:
             scope = data.get("scope", "?")
             content = (data.get("content") or "")[:50]
             print(f"{indent}+{elapsed:>5.1f}s  {source:<18} MEMORY   scope={scope}  \"{content}\"")
+        elif etype == "trigger_fired":
+            trigger_fires += 1
+            name = data.get("name", "?")
+            agent = data.get("agent", "?")
+            ttype = data.get("trigger_type", "?")
+            print(f"{indent}+{elapsed:>5.1f}s  {source:<18} TRIG FIRE  name={name}  agent={agent}  type={ttype}")
+        elif etype == "trigger_completed":
+            name = data.get("name", "?")
+            status = data.get("status", "?")
+            print(f"{indent}+{elapsed:>5.1f}s  {source:<18} TRIG DONE  name={name}  status={status}")
+        elif etype == "trigger_error":
+            name = data.get("name", "?")
+            err = (data.get("error") or "?")[:50]
+            print(f"{indent}+{elapsed:>5.1f}s  {source:<18} TRIG ERROR name={name}  error={err}")
+            failures.append({"type": "trigger", "source": source, "name": name, "error": err, "elapsed_s": elapsed})
 
     # Summary
     print(f"\nSummary")
@@ -220,6 +242,7 @@ def format_trace(path: Path, records: list[dict]) -> None:
     print(f"  Tool calls    : {tool_calls}  (failed: {tool_failures})")
     print(f"  Delegations   : {delegations}")
     print(f"  Memory ops    : {memory_ops}")
+    print(f"  Trigger fires : {trigger_fires}")
     print(f"  Tokens in/out : {total_in} / {total_out}")
 
     if failures:
@@ -228,5 +251,7 @@ def format_trace(path: Path, records: list[dict]) -> None:
         for f in failures:
             if f["type"] == "agent":
                 print(f"  +{f['elapsed_s']:>5.1f}s  AGENT FAILED  {f['source']}  {f['error']}")
-            else:
+            elif f["type"] == "tool":
                 print(f"  +{f['elapsed_s']:>5.1f}s  TOOL FAILED   {f['source']}/{f['tool']}  {f['error']}")
+            elif f["type"] == "trigger":
+                print(f"  +{f['elapsed_s']:>5.1f}s  TRIG FAILED   {f['name']}  {f['error']}")

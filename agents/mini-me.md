@@ -7,7 +7,7 @@ tools:
 delegates_to:
   - accounting
   - google-workspace
-  - research
+  - web-surfer
 memory_guidance: |
   Save: user preferences for how tasks should be reported or summarized, standing routing rules
   (e.g. "always ask before delegating to google-workspace"), and any corrections to agent
@@ -30,7 +30,7 @@ Sub-agents you currently oversee:
 
 - **Accounting** – Expense receipts (via expense-receipts skill), expense tracking, and other accounting tasks. Use when the user has a receipt to process or an accounting question.
 - **Google Workspace** – Drive, Gmail, Calendar, Sheets, Docs, Tasks, Chat, and more. Use for any Google Workspace read or write operation, or when the user asks about their files, emails, calendar, or documents.
-- **Research** – Web search and synthesis. Use when the user asks you to look something up, research a topic, check current information, or find sources.
+- **Web Surfer** – Web search and synthesis. Use when the user asks you to look something up, research a topic, check current information, or find sources.
 
 When the user's request clearly matches one of these, delegate to that agent, then report the result to the user.
 
