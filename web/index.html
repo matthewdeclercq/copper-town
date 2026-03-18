@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1a1a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Copper Town</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="app">
+    <header id="header">
+      <div class="header-left">
+        <select id="agent-select" aria-label="Select agent"></select>
+      </div>
+      <div class="header-center">
+        <h1>Copper Town</h1>
+      </div>
+      <div class="header-right">
+        <button id="btn-new" title="New session">+</button>
+        <button id="btn-settings" title="Settings">&#9881;</button>
+      </div>
+    </header>
+
+    <main id="messages"></main>
+
+    <footer id="input-bar">
+      <textarea id="input" rows="1" placeholder="Message..." aria-label="Message input"></textarea>
+      <button id="btn-send" title="Send">&#9654;</button>
+    </footer>
+
+    <div id="settings-panel" class="hidden">
+      <div class="settings-backdrop"></div>
+      <div class="settings-content">
+        <h2>Settings</h2>
+        <label>
+          API URL
+          <input type="url" id="cfg-url" placeholder="http://localhost:8420">
+        </label>
+        <label>
+          API Key
+          <input type="password" id="cfg-key" placeholder="your-api-key">
+        </label>
+        <div class="settings-actions">
+          <button id="btn-settings-save">Save</button>
+          <button id="btn-settings-cancel">Cancel</button>
+        </div>
+        <div class="settings-section">
+          <h3>Sessions</h3>
+          <div id="session-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/store.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

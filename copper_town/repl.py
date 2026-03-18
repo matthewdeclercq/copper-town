@@ -145,14 +145,24 @@ class REPLSession:
             base = BOLD + CYAN + "● You: " + RESET
             if not engine._bg.has_tasks:
                 return ANSI(base)
-            parts = []
-            for task_id, meta in engine._bg.active_meta().items():
+            n = len(engine._bg.active_ids())
+            status = DIM + f"\u27f3 {n} background {'task' if n == 1 else 'tasks'} running" + RESET
+            return ANSI(status + "\n\n" + base)
+
+        def _print_task_tree(new_ids: list[str]) -> None:
+            n = len(new_ids)
+            label = "agent" if n == 1 else "agents"
+            print(f"\n{BOLD}{GREEN}● {n} {label} launched{RESET}")
+            for i, task_id in enumerate(new_ids):
+                meta = engine._bg.get_meta(task_id)
                 slug = meta.get("agent", "?")
                 name = engine.agents[slug].name if slug in engine.agents else slug
-                parts.append(f"{name} ({task_id})")
-            n = len(engine._bg.active_ids())
-            status = f" \u27f3 {n} background {'task' if n == 1 else 'tasks'}: {', '.join(parts)}"
-            return ANSI(status + "\n\n" + base)
+                is_last = i == n - 1
+                connector = "└──" if is_last else "├──"
+                sub_indent = "    " if is_last else "│   "
+                print(f"{connector} {BOLD}{name}{RESET}")
+                print(f"{sub_indent}{DIM}└ Running in the background{RESET}")
+            print()
 
         try:
             while True:
@@ -165,17 +175,12 @@ class REPLSession:
                     continue
 
                 # Drain background task notifications before each turn
-                pending = engine._bg.drain_notifications()
+                pending = engine._bg.drain_into_messages(messages)
                 if pending:
                     for note in pending:
                         lines = note.splitlines()
                         print(f"\n\033[2m{lines[0]} — {lines[1] if len(lines) > 1 else ''}\033[0m")
                     print()
-                    if len(pending) == 1:
-                        messages.append({"role": "system", "content": pending[0]})
-                    else:
-                        bundled = "\n\n---\n\n".join(pending)
-                        messages.append({"role": "system", "content": f"[{len(pending)} background tasks completed]\n\n{bundled}"})
 
                 if not user_input:
                     continue
@@ -196,6 +201,7 @@ class REPLSession:
 
                 accumulated = ""
                 spinner_stopped = False
+                tasks_before = set(engine._bg.active_ids())
 
                 def on_token(chunk: str) -> None:
                     nonlocal accumulated, spinner_stopped
@@ -214,6 +220,8 @@ class REPLSession:
                     print(f"\n[Error] {e}. Session preserved — type another message.\n")
                     messages.pop()
                     continue
+
+                new_task_ids = [t for t in engine._bg.active_ids() if t not in tasks_before]
 
                 elapsed = time.monotonic() - t0
                 # If hallucination correction fired, response differs from accumulated.
@@ -242,6 +250,9 @@ class REPLSession:
                 )
                 messages.append({"role": "assistant", "content": response})
                 print(f"{token_info}\n")
+
+                if new_task_ids:
+                    _print_task_tree(new_task_ids)
 
         except (KeyboardInterrupt, asyncio.CancelledError):
             print("\n")

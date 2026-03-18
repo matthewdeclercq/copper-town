@@ -51,6 +51,13 @@ AGENT_DEFAULT_TIMEOUT = float(os.getenv("AGENT_DEFAULT_TIMEOUT", "300.0"))
 SCHEDULER_TICK_INTERVAL = float(os.getenv("SCHEDULER_TICK_INTERVAL", "30.0"))
 TRIGGER_DEFAULT_TIMEOUT = float(os.getenv("TRIGGER_DEFAULT_TIMEOUT", "300.0"))
 
+# -- HTTP API --
+API_HOST = os.getenv("API_HOST", "0.0.0.0")
+API_PORT = int(os.getenv("API_PORT", "8420"))
+API_KEY = os.getenv("API_KEY", "")
+SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", "7200"))
+MAX_CONCURRENT_SESSIONS = int(os.getenv("MAX_CONCURRENT_SESSIONS", "20"))
+
 # -- File access sandboxing --
 _raw_allowed = os.getenv("ALLOWED_READ_DIRS", "")
 ALLOWED_READ_DIRS: list[Path] = (

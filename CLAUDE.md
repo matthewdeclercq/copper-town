@@ -34,6 +34,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 │       ├── skills.py          # search_skills, load_skill
 │       ├── web_search.py      # web_search (ddgs/DuckDuckGo; web-surfer agent only)
 │       └── write_skill.py     # write_skill
+│   ├── sessions.py        # Session + SessionManager for HTTP API
+│   ├── api.py             # Starlette app, endpoints, auth middleware
 │   ├── polling.py          # PollChecker ABC + registry for trigger checkers
 │   ├── scheduler.py        # Scheduler: reads triggers.yml, fires cron/poll triggers
 │   └── mcp_registry.py    # MCPClientManager: lazy connect, tool dispatch
@@ -45,6 +47,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 │   └── expense-receipts.md
 ├── memory/                    # SQLite memory database
 ├── traces/                    # Session trace JSONL files
+├── web/                       # Static PWA files (served by `serve` subcommand)
+│   ├── index.html             # PWA shell
+│   ├── manifest.json          # PWA manifest
+│   ├── sw.js                  # Service worker (offline shell caching)
+│   ├── css/style.css          # Mobile-first responsive styles
+│   └── js/                    # Vanilla JS modules (app, api, store)
 ├── triggers.yml               # Trigger definitions for scheduler daemon
 └── mcp.yml                    # MCP server config (stdio/sse servers)
 ```
@@ -187,6 +195,30 @@ triggers:
    ```
 3. Reference it by name in `triggers.yml` `checker` field
 
+## HTTP API (`serve` subcommand)
+
+Starts a Starlette app on `API_HOST:API_PORT`. Auth: `X-Api-Key` header if `API_KEY` is set (`/health` is always public).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Liveness check |
+| `GET` | `/api/agents` | List all loaded agents |
+| `POST` | `/api/sessions` | Create session `{"agent": "<slug>"}` → `{"session_id": ..., "agent": ...}` |
+| `GET` | `/api/sessions` | List active sessions |
+| `DELETE` | `/api/sessions/{id}` | Delete session (triggers background memory extraction) |
+| `POST` | `/api/sessions/{id}/messages` | Send message `{"content": "..."}` → SSE stream |
+| `GET` | `/api/sessions/{id}/messages` | Fetch user/assistant messages |
+| `GET` | `/api/tasks` | List active background tasks |
+
+**SSE event types** (from `POST .../messages`):
+- `token` — streaming token chunk `{"t": "..."}`
+- `done` — final response `{"content": "..."}`
+- `error` — failure `{"error": "..."}`
+- `notifications` — completed background task summaries (array of strings)
+- `tasks` — newly launched background tasks `[{"task_id": ..., "name": ...}]`
+
+Static PWA files from `web/` are mounted at `/` if the directory exists.
+
 ## Development
 
 **Setup** (first time):
@@ -215,6 +247,8 @@ There are no automated tests or linting configs in this project.
 .venv/bin/python run.py regen-gws-skills gmail  # regenerate only matching skills
 .venv/bin/python run.py daemon                  # run scheduler daemon
 .venv/bin/python run.py daemon -v               # daemon with verbose trace output
+.venv/bin/python run.py serve                   # start HTTP API + PWA server
+.venv/bin/python run.py serve -v                # serve with verbose trace output
 ```
 
 **Useful flags**:
@@ -231,7 +265,21 @@ There are no automated tests or linting configs in this project.
 - `MODEL` — LiteLLM model string, e.g. `xai/grok-4-latest`, `anthropic/claude-sonnet-4-20250514` (default: `xai/grok-4-latest`)
 - `XAI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / etc. — provider key for the chosen model
 - `ALLOWED_READ_DIRS` — colon-separated dirs agents may read (default: project root only)
-- `CONTEXT_SUMMARIZE` — `true`/`false`; summarize evicted context instead of dropping it
+- `LOG_LEVEL` — Python logging level (default: `WARNING`)
+- `CONTEXT_SUMMARIZE` — `true`/`false`; summarize evicted context instead of dropping (default: `true`)
 - `MEMORY_COMPRESS_ENABLED` — set to `false` if memory contains sensitive data you don't want sent to the LLM
+- `MEMORY_MAX_LINES` — row count threshold that triggers LLM memory compression (default: `30`)
+- `MEMORY_WRITE_MAX_CHARS` — max chars accepted per `remember()` call (default: `2000`)
+- `MAX_PARALLEL_TOOLS` — max concurrent tool calls per LLM response (default: `4`)
+- `MAX_TOOL_OUTPUT_CHARS` — tool output truncation limit (default: `10000`)
+- `MAX_SYSTEM_PROMPT_CHARS` — system prompt truncation limit (default: `50000`)
+- `DELEGATION_RETRY_COUNT` — times to retry a failed delegation (default: `1`)
+- `MAX_CONCURRENT_AGENTS` — max agents running in parallel via AgentManager (default: `10`)
+- `AGENT_DEFAULT_TIMEOUT` — timeout for parallel agent runs in seconds (default: `300.0`)
 - `SCHEDULER_TICK_INTERVAL` — seconds between scheduler ticks (default: `30.0`)
 - `TRIGGER_DEFAULT_TIMEOUT` — default timeout for trigger-fired tasks in seconds (default: `300.0`)
+- `API_HOST` — bind address for HTTP API (default: `0.0.0.0`)
+- `API_PORT` — port for HTTP API (default: `8420`)
+- `API_KEY` — API key for authenticating `/api/*` requests (empty = no auth)
+- `SESSION_TTL_SECONDS` — session expiry in seconds (default: `7200`)
+- `MAX_CONCURRENT_SESSIONS` — max simultaneous chat sessions (default: `20`)

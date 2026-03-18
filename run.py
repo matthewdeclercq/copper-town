@@ -100,6 +100,44 @@ async def _cmd_regen_gws_skills(filter_names: list[str] | None) -> None:
         print(f"  [ERROR] {e['skill']}: {e['error']}")
 
 
+async def _cmd_serve() -> None:
+    from copper_town.config import API_HOST, API_PORT, ROOT_DIR
+    from copper_town.tracer import SessionTracer
+
+    verbose = "-v" in sys.argv or "--verbose" in sys.argv
+    model = None
+    for i, arg in enumerate(sys.argv):
+        if arg == "--model" and i + 1 < len(sys.argv):
+            model = sys.argv[i + 1]
+
+    engine = Engine(model=model)
+    await engine._ensure_initialized()
+    tracer = SessionTracer(
+        engine.event_bus,
+        "serve",
+        verbose=verbose,
+        silent_trace=True,
+    )
+
+    from copper_town.api import create_app
+    from starlette.staticfiles import StaticFiles
+    import uvicorn
+
+    app = create_app(engine)
+    web_dir = ROOT_DIR / "web"
+    if web_dir.exists():
+        app.mount("/", StaticFiles(directory=str(web_dir), html=True), name="static")
+
+    config = uvicorn.Config(app, host=API_HOST, port=API_PORT, log_level="info")
+    server = uvicorn.Server(config)
+
+    try:
+        await server.serve()
+    finally:
+        tracer.close()
+        await engine.close()
+
+
 async def _cmd_daemon() -> None:
     import signal
     from copper_town.scheduler import Scheduler
@@ -141,6 +179,10 @@ def main() -> None:
         asyncio.run(_cmd_regen_gws_skills(filter_names))
         return
 
+    if len(sys.argv) >= 2 and sys.argv[1] == "serve":
+        asyncio.run(_cmd_serve())
+        return
+
     if len(sys.argv) >= 2 and sys.argv[1] == "daemon":
         asyncio.run(_cmd_daemon())
         return
@@ -163,6 +205,8 @@ examples:
   python run.py regen-gws-skills gmail  # regenerate only gmail skills
   python run.py daemon                   # run scheduler daemon
   python run.py daemon -v                # scheduler with verbose trace output
+  python run.py serve                    # start HTTP API + PWA server
+  python run.py serve -v                 # serve with verbose trace output
   MODEL=gpt-4o python run.py            # different provider
 """,
     )

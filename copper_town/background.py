@@ -66,6 +66,21 @@ class BackgroundTaskManager:
         self._notifications.clear()
         return notes
 
+    def drain_into_messages(self, messages: list[dict]) -> list[str] | None:
+        """Drain notifications and inject as system messages. Returns raw list or None."""
+        pending = self.drain_notifications()
+        if not pending:
+            return None
+        if len(pending) == 1:
+            messages.append({"role": "system", "content": pending[0]})
+        else:
+            bundled = "\n\n---\n\n".join(pending)
+            messages.append({
+                "role": "system",
+                "content": f"[{len(pending)} background tasks completed]\n\n{bundled}",
+            })
+        return pending
+
     # ── Introspection ──────────────────────────────────────────────
 
     @property
