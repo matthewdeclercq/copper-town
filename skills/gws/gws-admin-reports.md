@@ -1,11 +1,13 @@
 ---
+cli_help: gws admin-reports --help
+description: 'Google Workspace Admin SDK: Audit logs and usage reports.'
 name: gws-admin-reports
-description: "Admin Reports: Audit logs and usage reports for Google Workspace domains."
+version: 0.22.3
 ---
 
-# admin-reports (v1)
+# admin-reports (reports_v1)
 
-> **Note:** Requires domain admin privileges or delegated admin access.
+> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
 
 ```bash
 gws admin-reports <resource> <method> [flags]
@@ -15,44 +17,35 @@ gws admin-reports <resource> <method> [flags]
 
 ### activities
 
-  - `list` — Retrieve a list of activities for a customer account and application. Use `--page-all` for large result sets.
-  - `watch` — Start receiving push notifications for account activities.
-
-Key params for `activities list`:
-- `userKey`: user email or `all`
-- `applicationName`: `admin`, `calendar`, `chat`, `drive`, `gplus`, `login`, `meet`, `mobile`, `rules`, `saml`, `token`, `user_accounts`, `context_aware_access`, `chrome`, `data_studio`, `jamboard`, `keep`
-- `startTime` / `endTime`: RFC3339 timestamps
-- `eventName`: filter by specific event
-- `filters`: parameter filter string, e.g. `doc_id==abc123`
+  - `list` — Retrieves a list of activities for a specific customer's account and application such as the Admin console application or the Google Drive application. For more information, see the guides for administrator and Google Drive activity reports. For more information about the activity report's parameters, see the activity parameters reference guides.
+  - `watch` — Start receiving notifications for account activities. For more information, see Receiving Push Notifications.
 
 ### channels
 
-  - `stop` — Stop push notification subscription for a channel.
+  - `stop` — Stop watching resources through this channel.
 
 ### customerUsageReports
 
-  - `get` — Get a usage report for the entire customer account for a given date.
-
-Key params: `date` (YYYY-MM-DD), `parameters` (comma-separated metric names)
+  - `get` — Retrieves a report which is a collection of properties and statistics for a specific customer's account. For more information, see the Customers Usage Report guide. For more information about the customer report's parameters, see the Customers Usage parameters reference guides.
 
 ### entityUsageReports
 
-  - `get` — Get a usage report for entities (e.g. GPlus communities, shared drives).
-
-Key params: `entityType`, `entityKey`, `date`, `parameters`
+  - `get` — Retrieves a report which is a collection of properties and statistics for entities used by users within the account. For more information, see the Entities Usage Report guide. For more information about the entities report's parameters, see the Entities Usage parameters reference guides.
 
 ### userUsageReport
 
-  - `get` — Get a usage report for a set of users for a given date.
-
-Key params: `userKey` (`all` or email), `date` (YYYY-MM-DD), `parameters`, `filters`
+  - `get` — Retrieves a report which is a collection of properties and statistics for a set of users with the account. For more information, see the User Usage Report guide. For more information about the user report's parameters, see the Users Usage parameters reference guides.
 
 ## Discovering Commands
 
+Before calling any API method, inspect it:
+
 ```bash
+# Browse resources and methods
 gws admin-reports --help
-gws admin-reports activities --help
-gws schema admin-reports.activities.list
+
+# Inspect a method's required params, types, and defaults
+gws schema admin-reports.<resource>.<method>
 ```
 
 Use `gws schema` output to build your `--params` and `--json` flags.

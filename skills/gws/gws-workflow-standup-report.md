@@ -1,10 +1,13 @@
 ---
+cli_help: gws workflow +standup-report --help
 description: 'Google Workflow: Today''s meetings + open tasks as a standup summary.'
 name: gws-workflow-standup-report
-version: 1.0.0
+version: 0.22.3
 ---
 
 # workflow +standup-report
+
+> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
 
 Today's meetings + open tasks as a standup summary
 
@@ -34,5 +37,5 @@ gws workflow +standup-report --format table
 
 ## See Also
 
-- `gws-shared` skill — Global flags and auth
-- `gws-workflow` skill — All cross-service productivity workflows commands
+- [gws-shared](../gws-shared/SKILL.md) — Global flags and auth
+- [gws-workflow](../gws-workflow/SKILL.md) — All cross-service productivity workflows commands

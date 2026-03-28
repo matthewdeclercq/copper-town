@@ -1,11 +1,14 @@
 ---
+cli_help: gws workflow +meeting-prep --help
 description: 'Google Workflow: Prepare for your next meeting: agenda, attendees, and
   linked docs.'
 name: gws-workflow-meeting-prep
-version: 1.0.0
+version: 0.22.3
 ---
 
 # workflow +meeting-prep
+
+> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
 
 Prepare for your next meeting: agenda, attendees, and linked docs
 
@@ -36,5 +39,5 @@ gws workflow +meeting-prep --calendar Work
 
 ## See Also
 
-- `gws-shared` skill — Global flags and auth
-- `gws-workflow` skill — All cross-service productivity workflows commands
+- [gws-shared](../gws-shared/SKILL.md) — Global flags and auth
+- [gws-workflow](../gws-workflow/SKILL.md) — All cross-service productivity workflows commands

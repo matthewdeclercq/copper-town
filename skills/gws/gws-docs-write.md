@@ -1,10 +1,13 @@
 ---
+cli_help: gws docs +write --help
 description: 'Google Docs: Append text to a document.'
 name: gws-docs-write
-version: 1.0.0
+version: 0.22.3
 ---
 
 # docs +write
+
+> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
 
 Append text to a document
 
@@ -37,5 +40,5 @@ gws docs +write --document DOC_ID --text 'Hello, world!'
 
 ## See Also
 
-- `gws-shared` skill — Global flags and auth
-- `gws-docs` skill — All read and write google docs commands
+- [gws-shared](../gws-shared/SKILL.md) — Global flags and auth
+- [gws-docs](../gws-docs/SKILL.md) — All read and write google docs commands

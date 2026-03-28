@@ -1,10 +1,13 @@
 ---
+cli_help: gws sheets +read --help
 description: 'Google Sheets: Read values from a spreadsheet.'
 name: gws-sheets-read
-version: 1.0.0
+version: 0.22.3
 ---
 
 # sheets +read
+
+> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
 
 Read values from a spreadsheet
 
@@ -24,7 +27,7 @@ gws sheets +read --spreadsheet <ID> --range <RANGE>
 ## Examples
 
 ```bash
-gws sheets +read --spreadsheet ID --range 'Sheet1!A1:D10'
+gws sheets +read --spreadsheet ID --range "Sheet1!A1:D10"
 gws sheets +read --spreadsheet ID --range Sheet1
 ```
 
@@ -35,5 +38,5 @@ gws sheets +read --spreadsheet ID --range Sheet1
 
 ## See Also
 
-- `gws-shared` skill — Global flags and auth
-- `gws-sheets` skill — All read and write spreadsheets commands
+- [gws-shared](../gws-shared/SKILL.md) — Global flags and auth
+- [gws-sheets](../gws-sheets/SKILL.md) — All read and write spreadsheets commands

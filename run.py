@@ -95,7 +95,7 @@ async def _cmd_regen_gws_skills(filter_names: list[str] | None) -> None:
     results = await regen_gws_skills(filter_names=filter_names)
     updated = [r for r in results if r["status"] == "updated"]
     errors = [r for r in results if r["status"] == "error"]
-    print(f"\nRegenerated {len(updated)}/{len(results)} skills.")
+    print(f"\nDone: {len(updated)} updated, {len(errors)} errors.")
     for e in errors:
         print(f"  [ERROR] {e['skill']}: {e['error']}")
 

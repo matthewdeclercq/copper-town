@@ -1,10 +1,13 @@
 ---
+cli_help: gws calendar --help
 description: 'Google Calendar: Manage calendars and events.'
 name: gws-calendar
-version: 1.0.0
+version: 0.22.3
 ---
 
 # calendar (v3)
+
+> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
 
 ```bash
 gws calendar <resource> <method> [flags]
@@ -14,8 +17,8 @@ gws calendar <resource> <method> [flags]
 
 | Command | Description |
 |---------|-------------|
-| `gws-calendar-insert` skill | create a new event |
-| `gws-calendar-agenda` skill | Show upcoming events across all calendars |
+| [`+insert`](../gws-calendar-insert/SKILL.md) | create a new event |
+| [`+agenda`](../gws-calendar-agenda/SKILL.md) | Show upcoming events across all calendars |
 
 ## API Resources
 
@@ -44,7 +47,10 @@ gws calendar <resource> <method> [flags]
   - `clear` — Clears a primary calendar. This operation deletes all events associated with the primary calendar of an account.
   - `delete` — Deletes a secondary calendar. Use calendars.clear for clearing all events on primary calendars.
   - `get` — Returns metadata for a calendar.
-  - `insert` — Creates a secondary calendar. The authenticated user for the request is made the data owner of the new calendar. Note: We recommend to authenticate as the intended data owner of the calendar. You can use domain-wide delegation of authority to allow applications to act on behalf of a specific user. Don't use a service account for authentication. If you use a service account for authentication, the service account is the data owner, which can lead to unexpected behavior.
+  - `insert` — Creates a secondary calendar.
+The authenticated user for the request is made the data owner of the new calendar.
+
+Note: We recommend to authenticate as the intended data owner of the calendar. You can use domain-wide delegation of authority to allow applications to act on behalf of a specific user. Don't use a service account for authentication. If you use a service account for authentication, the service account is the data owner, which can lead to unexpected behavior.
   - `patch` — Updates metadata for a calendar. This method supports patch semantics.
   - `update` — Updates metadata for a calendar.
 
@@ -60,7 +66,8 @@ gws calendar <resource> <method> [flags]
 
   - `delete` — Deletes an event.
   - `get` — Returns an event based on its Google Calendar ID. To retrieve an event using its iCalendar ID, call the events.list method using the iCalUID parameter.
-  - `import` — Imports an event. This operation is used to add a private copy of an existing event to a calendar. Only events with an eventType of default may be imported. Deprecated behavior: If a non-default event is imported, its type will be changed to default and any event-type-specific properties it may have will be dropped.
+  - `import` — Imports an event. This operation is used to add a private copy of an existing event to a calendar. Only events with an eventType of default may be imported.
+Deprecated behavior: If a non-default event is imported, its type will be changed to default and any event-type-specific properties it may have will be dropped.
   - `insert` — Creates an event.
   - `instances` — Returns instances of the specified recurring event.
   - `list` — Returns events on the specified calendar.

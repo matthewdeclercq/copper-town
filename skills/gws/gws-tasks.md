@@ -1,10 +1,13 @@
 ---
+cli_help: gws tasks --help
 description: 'Google Tasks: Manage task lists and tasks.'
 name: gws-tasks
-version: 1.0.0
+version: 0.22.3
 ---
 
 # tasks (v1)
+
+> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
 
 ```bash
 gws tasks <resource> <method> [flags]

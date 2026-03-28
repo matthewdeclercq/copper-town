@@ -1,10 +1,13 @@
 ---
+cli_help: gws calendar +insert --help
 description: 'Google Calendar: Create a new event.'
 name: gws-calendar-insert
-version: 1.0.0
+version: 0.22.3
 ---
 
 # calendar +insert
+
+> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
 
 create a new event
 
@@ -25,23 +28,25 @@ gws calendar +insert --summary <TEXT> --start <TIME> --end <TIME>
 | `--location` | — | — | Event location |
 | `--description` | — | — | Event description/body |
 | `--attendee` | — | — | Attendee email (can be used multiple times) |
+| `--meet` | — | — | Add a Google Meet video conference link |
 
 ## Examples
 
 ```bash
 gws calendar +insert --summary 'Standup' --start '2026-06-17T09:00:00-07:00' --end '2026-06-17T09:30:00-07:00'
 gws calendar +insert --summary 'Review' --start ... --end ... --attendee alice@example.com
+gws calendar +insert --summary 'Meet' --start ... --end ... --meet
 ```
 
 ## Tips
 
 - Use RFC3339 format for times (e.g. 2026-06-17T09:00:00-07:00).
-- For recurring events or conference links, use the raw API instead.
+- The --meet flag automatically adds a Google Meet link to the event.
 
 > [!CAUTION]
 > This is a **write** command — confirm with the user before executing.
 
 ## See Also
 
-- `gws-shared` skill — Global flags and auth
-- `gws-calendar` skill — All manage calendars and events commands
+- [gws-shared](../gws-shared/SKILL.md) — Global flags and auth
+- [gws-calendar](../gws-calendar/SKILL.md) — All manage calendars and events commands

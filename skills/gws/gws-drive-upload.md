@@ -1,10 +1,13 @@
 ---
+cli_help: gws drive +upload --help
 description: 'Google Drive: Upload a file with automatic metadata.'
 name: gws-drive-upload
-version: 1.0.0
+version: 0.22.3
 ---
 
 # drive +upload
+
+> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
 
 Upload a file with automatic metadata
 
@@ -40,5 +43,5 @@ gws drive +upload ./data.csv --name 'Sales Data.csv'
 
 ## See Also
 
-- `gws-shared` skill — Global flags and auth
-- `gws-drive` skill — All manage files, folders, and shared drives commands
+- [gws-shared](../gws-shared/SKILL.md) — Global flags and auth
+- [gws-drive](../gws-drive/SKILL.md) — All manage files, folders, and shared drives commands

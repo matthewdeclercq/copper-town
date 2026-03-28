@@ -1,10 +1,13 @@
 ---
+cli_help: gws docs --help
 description: Read and write Google Docs.
 name: gws-docs
-version: 1.0.0
+version: 0.22.3
 ---
 
 # docs (v1)
+
+> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
 
 ```bash
 gws docs <resource> <method> [flags]
@@ -14,7 +17,7 @@ gws docs <resource> <method> [flags]
 
 | Command | Description |
 |---------|-------------|
-| `gws-docs-write` skill | Append text to a document |
+| [`+write`](../gws-docs-write/SKILL.md) | Append text to a document |
 
 ## API Resources
 

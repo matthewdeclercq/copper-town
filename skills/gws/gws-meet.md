@@ -1,9 +1,13 @@
 ---
+cli_help: gws meet --help
+description: Manage Google Meet conferences.
 name: gws-meet
-description: "Google Meet: Create and manage meeting spaces and access conference records."
+version: 0.22.3
 ---
 
 # meet (v2)
+
+> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
 
 ```bash
 gws meet <resource> <method> [flags]
@@ -11,35 +15,32 @@ gws meet <resource> <method> [flags]
 
 ## API Resources
 
-### spaces
-
-  - `create` — Create a new meeting space.
-  - `endActiveConference` — End the active conference in a space (if one is running).
-  - `get` — Get details about a meeting space.
-  - `patch` — Update details about a meeting space.
-
 ### conferenceRecords
 
-  - `get` — Get a conference record by conference ID.
-  - `list` — List conference records, ordered by start time descending by default.
-  - `participants` — Sub-resource: `get`, `list` participants in a conference record.
-  - `recordings` — Sub-resource: `get`, `list` recordings for a conference record.
-  - `transcripts` — Sub-resource: `get`, `list` transcripts; `entries` sub-resource for transcript entries.
+  - `get` — Gets a conference record by conference ID.
+  - `list` — Lists the conference records. By default, ordered by start time and in descending order.
+  - `participants` — Operations on the 'participants' resource
+  - `recordings` — Operations on the 'recordings' resource
+  - `smartNotes` — Operations on the 'smartNotes' resource
+  - `transcripts` — Operations on the 'transcripts' resource
 
-## Key Parameters
+### spaces
 
-- `name` (space resource name): e.g. `spaces/jou-zhgy-xuag`
-- `conferenceRecord` resource name: e.g. `conferenceRecords/abc123`
-- `conferenceRecords.list` params: `pageSize`, `pageToken`, `filter`
+  - `create` — Creates a space.
+  - `endActiveConference` — Ends an active conference (if there's one). For an example, see [End active conference](https://developers.google.com/workspace/meet/api/guides/meeting-spaces#end-active-conference).
+  - `get` — Gets details about a meeting space. For an example, see [Get a meeting space](https://developers.google.com/workspace/meet/api/guides/meeting-spaces#get-meeting-space).
+  - `patch` — Updates details about a meeting space. For an example, see [Update a meeting space](https://developers.google.com/workspace/meet/api/guides/meeting-spaces#update-meeting-space).
 
 ## Discovering Commands
 
+Before calling any API method, inspect it:
+
 ```bash
+# Browse resources and methods
 gws meet --help
-gws meet spaces --help
-gws meet conferenceRecords --help
-gws schema meet.spaces.create
-gws schema meet.conferenceRecords.list
+
+# Inspect a method's required params, types, and defaults
+gws schema meet.<resource>.<method>
 ```
 
 Use `gws schema` output to build your `--params` and `--json` flags.

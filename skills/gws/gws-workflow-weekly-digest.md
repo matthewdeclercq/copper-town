@@ -1,13 +1,16 @@
 ---
-description: 'GWS Workflow: Weekly summary of this week''s meetings and unread email
+cli_help: gws workflow +weekly-digest --help
+description: 'Google Workflow: Weekly summary: this week''s meetings + unread email
   count.'
 name: gws-workflow-weekly-digest
-version: 1.0.1
+version: 0.22.3
 ---
 
 # workflow +weekly-digest
 
-Weekly summary: this week's meetings + unread email count.
+> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
+
+Weekly summary: this week's meetings + unread email count
 
 ## Usage
 
@@ -19,9 +22,7 @@ gws workflow +weekly-digest
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
-| `--format` | — | json | Output format: json (default), table, yaml, csv |
-| `--sanitize` | — | — | Sanitize API responses through a Model Armor template. Requires cloud-platform scope. Format: projects/PROJECT/locations/LOCATION/templates/TEMPLATE. Also reads GWS_SANITIZE_TEMPLATE env var. |
-| `--dry-run` | — | — | Validate the request locally without sending it to the API |
+| `--format` | — | — | Output format: json (default), table, yaml, csv |
 
 ## Examples
 
@@ -34,3 +35,8 @@ gws workflow +weekly-digest --format table
 
 - Read-only — never modifies data.
 - Combines calendar agenda (week) with gmail triage summary.
+
+## See Also
+
+- [gws-shared](../gws-shared/SKILL.md) — Global flags and auth
+- [gws-workflow](../gws-workflow/SKILL.md) — All cross-service productivity workflows commands

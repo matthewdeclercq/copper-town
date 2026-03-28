@@ -1,50 +1,38 @@
 ---
+cli_help: gws workflow --help
+description: 'Google Workflow: Cross-service productivity workflows.'
 name: gws-workflow
-description: "GWS Workflow: Cross-service productivity helpers combining Calendar, Gmail, Drive, Tasks, and Chat."
+version: 0.22.3
 ---
 
-# workflow (alias: wf)
+# workflow (v1)
 
-Cross-service productivity helpers. All read-only commands are safe to run without confirmation; write commands require user confirmation.
-
-```bash
-gws workflow <+helper> [flags]
-# or
-gws wf <+helper> [flags]
-```
-
-## Available Helpers
-
-| Helper | Description | Writes? |
-|--------|-------------|---------|
-| `+standup-report` | Today's meetings + open tasks | No |
-| `+meeting-prep` | Next meeting: agenda, attendees, linked docs | No |
-| `+weekly-digest` | This week's meetings + unread email count | No |
-| `+email-to-task` | Convert a Gmail message into a Tasks entry | Yes |
-| `+file-announce` | Announce a Drive file in a Chat space | Yes |
-
-## Usage
+> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
 
 ```bash
-gws workflow +standup-report
-gws workflow +standup-report --format table
-
-gws workflow +meeting-prep
-gws workflow +meeting-prep --calendar CALENDAR_ID
-
-gws workflow +weekly-digest
-
-gws workflow +email-to-task --message-id MSG_ID
-gws workflow +email-to-task --message-id MSG_ID --tasklist LIST_ID
-
-gws workflow +file-announce --file-id FILE_ID --space spaces/SPACE_ID
-gws workflow +file-announce --file-id FILE_ID --space spaces/SPACE_ID --message "Check this out!"
+gws workflow <resource> <method> [flags]
 ```
+
+## Helper Commands
+
+| Command | Description |
+|---------|-------------|
+| [`+standup-report`](../gws-workflow-standup-report/SKILL.md) | Today's meetings + open tasks as a standup summary |
+| [`+meeting-prep`](../gws-workflow-meeting-prep/SKILL.md) | Prepare for your next meeting: agenda, attendees, and linked docs |
+| [`+email-to-task`](../gws-workflow-email-to-task/SKILL.md) | Convert a Gmail message into a Google Tasks entry |
+| [`+weekly-digest`](../gws-workflow-weekly-digest/SKILL.md) | Weekly summary: this week's meetings + unread email count |
+| [`+file-announce`](../gws-workflow-file-announce/SKILL.md) | Announce a Drive file in a Chat space |
 
 ## Discovering Commands
 
+Before calling any API method, inspect it:
+
 ```bash
+# Browse resources and methods
 gws workflow --help
-gws workflow +standup-report --help
-gws workflow +file-announce --help
+
+# Inspect a method's required params, types, and defaults
+gws schema workflow.<resource>.<method>
 ```
+
+Use `gws schema` output to build your `--params` and `--json` flags.

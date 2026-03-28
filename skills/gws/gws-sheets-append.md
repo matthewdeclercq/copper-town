@@ -1,10 +1,13 @@
 ---
+cli_help: gws sheets +append --help
 description: 'Google Sheets: Append a row to a spreadsheet.'
 name: gws-sheets-append
-version: 1.0.0
+version: 0.22.3
 ---
 
 # sheets +append
+
+> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
 
 Append a row to a spreadsheet
 
@@ -39,5 +42,5 @@ gws sheets +append --spreadsheet ID --json-values '[["a","b"],["c","d"]]'
 
 ## See Also
 
-- `gws-shared` skill — Global flags and auth
-- `gws-sheets` skill — All read and write spreadsheets commands
+- [gws-shared](../gws-shared/SKILL.md) — Global flags and auth
+- [gws-sheets](../gws-sheets/SKILL.md) — All read and write spreadsheets commands

@@ -1,10 +1,13 @@
 ---
+cli_help: gws calendar +agenda --help
 description: 'Google Calendar: Show upcoming events across all calendars.'
 name: gws-calendar-agenda
-version: 1.0.0
+version: 0.22.3
 ---
 
 # calendar +agenda
+
+> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
 
 Show upcoming events across all calendars
 
@@ -23,6 +26,7 @@ gws calendar +agenda
 | `--week` | — | — | Show this week's events |
 | `--days` | — | — | Number of days ahead to show |
 | `--calendar` | — | — | Filter to specific calendar name or ID |
+| `--timezone` | — | — | IANA timezone override (e.g. America/Denver). Defaults to Google account timezone. |
 
 ## Examples
 
@@ -31,14 +35,16 @@ gws calendar +agenda
 gws calendar +agenda --today
 gws calendar +agenda --week --format table
 gws calendar +agenda --days 3 --calendar 'Work'
+gws calendar +agenda --today --timezone America/New_York
 ```
 
 ## Tips
 
 - Read-only — never modifies events.
 - Queries all calendars by default; use --calendar to filter.
+- Uses your Google account timezone by default; override with --timezone.
 
 ## See Also
 
-- `gws-shared` skill — Global flags and auth
-- `gws-calendar` skill — All manage calendars and events commands
+- [gws-shared](../gws-shared/SKILL.md) — Global flags and auth
+- [gws-calendar](../gws-calendar/SKILL.md) — All manage calendars and events commands

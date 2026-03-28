@@ -1,9 +1,13 @@
 ---
+cli_help: gws forms --help
+description: Read and write Google Forms.
 name: gws-forms
-description: "Google Forms: Read and write forms and collect responses."
+version: 0.22.3
 ---
 
 # forms (v1)
+
+> **PREREQUISITE:** Read `../gws-shared/SKILL.md` for auth, global flags, and security rules. If missing, run `gws generate-skills` to create it.
 
 ```bash
 gws forms <resource> <method> [flags]
@@ -13,25 +17,23 @@ gws forms <resource> <method> [flags]
 
 ### forms
 
-  - `batchUpdate` — Change the form with a batch of updates (add/modify/delete items, settings, etc.).
-  - `create` — Create a new form. Only `form.info.title` and `form.info.document_title` are used from the request body.
-  - `get` — Get a form by ID.
-  - `setPublishSettings` — Update publish settings of a form (not supported on legacy forms).
-  - `responses` — Operations on form responses sub-resource: `get`, `list`
-  - `watches` — Operations on form watches sub-resource: `create`, `delete`, `list`, `renew`
-
-## Key Parameters
-
-- `formId` (required): the form's Drive file ID
-- `responses.list` supports `filter` param, e.g. `timestamp > 2024-01-01T00:00:00Z`
+  - `batchUpdate` — Change the form with a batch of updates.
+  - `create` — Create a new form using the title given in the provided form message in the request. *Important:* Only the form.info.title and form.info.document_title fields are copied to the new form. All other fields including the form description, items and settings are disallowed. To create a new form and add items, you must first call forms.create to create an empty form with a title and (optional) document title, and then call forms.update to add the items.
+  - `get` — Get a form.
+  - `setPublishSettings` — Updates the publish settings of a form. Legacy forms aren't supported because they don't have the `publish_settings` field.
+  - `responses` — Operations on the 'responses' resource
+  - `watches` — Operations on the 'watches' resource
 
 ## Discovering Commands
 
+Before calling any API method, inspect it:
+
 ```bash
+# Browse resources and methods
 gws forms --help
-gws forms forms --help
-gws schema forms.forms.get
-gws schema forms.forms.responses.list
+
+# Inspect a method's required params, types, and defaults
+gws schema forms.<resource>.<method>
 ```
 
 Use `gws schema` output to build your `--params` and `--json` flags.
