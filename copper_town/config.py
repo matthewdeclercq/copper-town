@@ -30,6 +30,8 @@ MAX_CONTEXT_MESSAGES = 40
 MAX_PARALLEL_TOOLS = int(os.getenv("MAX_PARALLEL_TOOLS", "4"))
 MAX_TOOL_OUTPUT_CHARS = int(os.getenv("MAX_TOOL_OUTPUT_CHARS", "10000"))
 MAX_SYSTEM_PROMPT_CHARS = int(os.getenv("MAX_SYSTEM_PROMPT_CHARS", "50000"))
+MAX_MEMORY_PROMPT_CHARS = int(os.getenv("MAX_MEMORY_PROMPT_CHARS", "4000"))
+CONSUMED_TOOL_MAX_CHARS = int(os.getenv("CONSUMED_TOOL_MAX_CHARS", "500"))
 CONTEXT_SUMMARIZE = os.getenv("CONTEXT_SUMMARIZE", "true").lower() == "true"
 LOG_LEVEL = os.getenv("LOG_LEVEL", "WARNING")
 
@@ -65,6 +67,15 @@ ALLOWED_READ_DIRS: list[Path] = (
     if _raw_allowed.strip()
     else [ROOT_DIR]
 )
+
+# -- Boatswain sandbox --
+_raw_sandbox = os.getenv("BOATSWAIN_SANDBOX_DIR", "")
+BOATSWAIN_SANDBOX_DIR: Path = (
+    Path(_raw_sandbox).expanduser().resolve()
+    if _raw_sandbox.strip()
+    else ROOT_DIR / "sandbox"
+)
+BOATSWAIN_DOCKER_IMAGE: str = os.getenv("BOATSWAIN_DOCKER_IMAGE", "python:3.12-slim")
 
 _PROVIDER_KEY_MAP = {
     "anthropic": "ANTHROPIC_API_KEY",

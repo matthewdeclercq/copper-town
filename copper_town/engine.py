@@ -23,12 +23,14 @@ import litellm
 from .config import (
     AGENTS_DIR,
     BG_RESULT_MAX_CHARS,
+    CONSUMED_TOOL_MAX_CHARS,
     CONTEXT_SUMMARIZE,
     DELEGATION_RETRY_COUNT,
     GLOBAL_SKILLS_DIR,
     LOG_LEVEL,
     MAX_CONTEXT_MESSAGES,
     MAX_DELEGATION_DEPTH,
+    MAX_MEMORY_PROMPT_CHARS,
     MAX_SYSTEM_PROMPT_CHARS,
     MAX_TOOL_ITERATIONS,
     MAX_TOOL_OUTPUT_CHARS,
@@ -108,7 +110,6 @@ class AgentDefinition:
     description: str
     tools: list[str] = field(default_factory=list)
     delegates_to: list[str] = field(default_factory=list)
-    skills: list[str] = field(default_factory=list)
     mcp_servers: list[str] = field(default_factory=list)
     body: str = ""
     model: str | None = None
@@ -188,7 +189,6 @@ class Engine:
             description=front.get("description", ""),
             tools=front.get("tools", []),
             delegates_to=front.get("delegates_to", []),
-            skills=front.get("skills", []),
             mcp_servers=front.get("mcp_servers", []),
             body=body,
             model=front.get("model"),
@@ -196,6 +196,15 @@ class Engine:
         )
 
     # ── System prompt assembly ─────────────────────────────────────
+
+    @staticmethod
+    def _cap_memory_text(text: str, limit: int) -> str:
+        """Truncate memory at a line boundary to stay within limit."""
+        if len(text) <= limit:
+            return text
+        truncated = text[:limit].rsplit("\n", 1)[0]
+        omitted = len(text) - len(truncated)
+        return truncated + f"\n[... {omitted} chars omitted — older entries]"
 
     @staticmethod
     def _sanitize_memory(text: str) -> str:
@@ -226,31 +235,16 @@ class Engine:
                     content = interpolate_env(content)
                     parts.append(f"\n\n---\n## Skill: {skill_path.stem}\n\n{content}")
 
-        # Agent-specific skills (search entire skills tree)
-        for skill_name in agent.skills:
-            matches = list(SKILLS_DIR.rglob(f"{skill_name}.md"))
-            if not matches:
-                logger.warning("Agent '%s' declares skill '%s' but no matching file found.", agent.slug, skill_name)
-                continue
-            skill_path = matches[0]
-            async with aiofiles.open(skill_path, encoding="utf-8") as f:
-                raw = (await f.read()).strip()
-            # Strip frontmatter from skill
-            m = re.match(r"^---\s*\n.*?\n---\s*\n(.*)", raw, re.DOTALL)
-            content = m.group(1).strip() if m else raw
-            content = interpolate_env(content)
-            parts.append(f"\n\n---\n## Skill: {skill_name}\n\n{content}")
-
         # Memory from SQLite
         global_mem = await self.memory_store.get_memory_text("__global__", scope="global")
         if global_mem:
-            mem = self._sanitize_memory(global_mem)
+            mem = self._cap_memory_text(self._sanitize_memory(global_mem), MAX_MEMORY_PROMPT_CHARS)
             if mem:
                 parts.append(f"\n\n---\n## Memory (global)\n\n{mem}")
 
         agent_mem = await self.memory_store.get_memory_text(agent.slug, scope="agent")
         if agent_mem:
-            mem = self._sanitize_memory(agent_mem)
+            mem = self._cap_memory_text(self._sanitize_memory(agent_mem), MAX_MEMORY_PROMPT_CHARS)
             if mem:
                 parts.append(f"\n\n---\n## Memory ({agent.name})\n\n{mem}")
 
@@ -871,6 +865,18 @@ class Engine:
             logger.debug("Context summarization failed; using generic notice.")
             return None
 
+    def _compress_consumed_tool_results(self, messages: list[dict]) -> None:
+        """Replace large tool results that the LLM has already responded to with a short stub."""
+        last_assistant = max(
+            (i for i, m in enumerate(messages) if m.get("role") == "assistant"),
+            default=-1,
+        )
+        for msg in messages[:last_assistant]:
+            if msg.get("role") == "tool":
+                content = msg.get("content", "")
+                if len(content) > CONSUMED_TOOL_MAX_CHARS:
+                    msg["content"] = f"[Tool result: {len(content)} chars — already processed]"
+
     async def _trim_context_window(self, messages: list[dict], agent_slug: str) -> None:
         """Trim messages in-place when context exceeds MAX_CONTEXT_MESSAGES."""
         if len(messages) <= MAX_CONTEXT_MESSAGES + 1:
@@ -922,6 +928,25 @@ class Engine:
             },
         ))
 
+    @staticmethod
+    def _check_skill_dedup(tc: Any, loaded_skills: set[str]) -> str | None:
+        """Return a dedup response if this load_skill was already called this loop, else None."""
+        if tc.function.name != "load_skill":
+            return None
+        try:
+            skill_name = json.loads(tc.function.arguments).get("name", "")
+        except (json.JSONDecodeError, AttributeError):
+            skill_name = ""
+        if not skill_name:
+            return None
+        if skill_name in loaded_skills:
+            return json.dumps({
+                "already_loaded": True,
+                "hint": f"Skill '{skill_name}' was already loaded earlier in this conversation.",
+            })
+        loaded_skills.add(skill_name)
+        return None
+
     async def _execute_and_append_tool_results(
         self,
         tool_calls: list,
@@ -929,20 +954,34 @@ class Engine:
         agent: "AgentDefinition",
         depth: int,
         allowed_tools: set[str],
+        loaded_skills: set[str],
     ) -> str:
         """Execute tool calls (parallel if multiple), append results, return last tool name."""
         if len(tool_calls) == 1:
             tc = tool_calls[0]
-            res = await self._execute_tool_call(tc, agent, depth, allowed_tools)
+            dedup = self._check_skill_dedup(tc, loaded_skills)
+            res = dedup if dedup is not None else await self._execute_tool_call(tc, agent, depth, allowed_tools)
             messages.append({"role": "tool", "tool_call_id": tc.id, "content": res})
             return tc.function.name
-        results = await asyncio.gather(
-            *(self._execute_tool_call(tc, agent, depth, allowed_tools) for tc in tool_calls)
+
+        tasks = []
+        all_results: dict[int, str] = {}
+        for idx, tc in enumerate(tool_calls):
+            dedup = self._check_skill_dedup(tc, loaded_skills)
+            if dedup is not None:
+                all_results[idx] = dedup
+            else:
+                tasks.append((idx, tc))
+
+        gathered = await asyncio.gather(
+            *(self._execute_tool_call(tc, agent, depth, allowed_tools) for _, tc in tasks)
         )
+        all_results.update({idx: res for (idx, _), res in zip(tasks, gathered)})
+
         last = ""
-        for tc, res in zip(tool_calls, results):
+        for idx, tc in enumerate(tool_calls):
             last = tc.function.name
-            messages.append({"role": "tool", "tool_call_id": tc.id, "content": res})
+            messages.append({"role": "tool", "tool_call_id": tc.id, "content": all_results.get(idx, "")})
         return last
 
     # ── Completion loop ────────────────────────────────────────────
@@ -974,6 +1013,7 @@ class Engine:
         _hallucination_fired.set(False)
 
         last_tool: str | None = None
+        loaded_skills: set[str] = set()
         # Hallucination correction: track whether we've already injected a correction
         # this loop so we don't loop infinitely.
         _hallucination_corrected = False
@@ -983,6 +1023,8 @@ class Engine:
 
         for _iter in range(MAX_TOOL_ITERATIONS):
             await self._trim_context_window(messages, agent.slug)
+            if last_tool is not None:
+                self._compress_consumed_tool_results(messages)
 
             _llm_t0 = time.monotonic()
 
@@ -1033,7 +1075,7 @@ class Engine:
                         ],
                     })
                     last_tool = await self._execute_and_append_tool_results(
-                        tool_calls, messages, agent, depth, allowed_tools
+                        tool_calls, messages, agent, depth, allowed_tools, loaded_skills
                     )
                     continue
 
@@ -1077,7 +1119,7 @@ class Engine:
             messages.append({k: v for k, v in message.model_dump().items() if v is not None})
 
             last_tool = await self._execute_and_append_tool_results(
-                message.tool_calls, messages, agent, depth, allowed_tools
+                message.tool_calls, messages, agent, depth, allowed_tools, loaded_skills
             )
 
         usage = _last_usage.get({"in": 0, "out": 0})
@@ -1229,7 +1271,6 @@ class Engine:
                 "description": a.description,
                 "tools": a.tools,
                 "delegates_to": a.delegates_to,
-                "skills": a.skills,
             }
             for a in self.agents.values()
         ]

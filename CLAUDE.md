@@ -32,6 +32,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 │       ├── memory_tool.py     # remember (schema only)
 │       ├── regen_gws_skills.py # regen-gws-skills subcommand
 │       ├── skills.py          # search_skills, load_skill
+│       ├── sandbox.py         # write_file, run_shell (Docker-isolated; boatswain only)
 │       ├── web_search.py      # web_search (ddgs/DuckDuckGo; navigator agent only)
 │       └── write_skill.py     # write_skill
 │   ├── sessions.py        # Session + SessionManager for HTTP API
@@ -69,8 +70,6 @@ tools:
   - read_file
 delegates_to:
   - quartermaster
-skills:
-  - gws-gmail-send
 mcp_servers:
   - github
 memory_guidance: |
@@ -81,7 +80,6 @@ System prompt body...
 ```
 
 - `tools`: always-on: `remember`, `search_skills`, `load_skill`; `delegate_background` and `cancel_background_task` added automatically when `delegates_to` is set; `delegate_to_agent` is opt-in (declare it in `tools:` to enable synchronous/blocking delegation); `write_skill` must be declared explicitly
-- `skills`: found by `rglob` anywhere in `skills/`; `skills/_global/` injected into every agent
 - `mcp_servers`: list of server slugs from `mcp.yml`; MCP tools are lazily connected on first use and shadow same-named `@tool` functions
 - `${VAR_NAME}` in agent bodies and skill files is replaced with the env var value at prompt-build time
 
@@ -95,9 +93,15 @@ System prompt body...
 
 **Memory**: `add()` exact-match deduplicates before insert. `pin=True` makes a fact immune to LLM compression. `replace_memories()` only soft-deletes unpinned rows. Session memory extraction runs only when `len(messages) >= MEMORY_MIN_MESSAGES=12`.
 
-**Context window**: sliding window keeps last `MAX_CONTEXT_MESSAGES=40` messages. When `CONTEXT_SUMMARIZE=true`, evicted messages are LLM-summarized and prepended as a system message rather than simply dropped.
+**Context window**: sliding window keeps last `MAX_CONTEXT_MESSAGES=40` messages. When `CONTEXT_SUMMARIZE=true`, evicted messages are LLM-summarized and prepended as a system message rather than simply dropped. Each iteration also compresses any tool result older than the last assistant message to a short stub (`CONSUMED_TOOL_MAX_CHARS=500`) — idempotent and bounded by the message window.
 
 **Tool output**: truncated to `MAX_TOOL_OUTPUT_CHARS=10000` with a `[truncated N chars]` suffix.
+
+**Memory injection**: agent and global memory are each capped at `MAX_MEMORY_PROMPT_CHARS=4000` chars in the system prompt, truncated at a line boundary with an omission notice.
+
+**Skill dedup**: per completion loop, a `loaded_skills` set tracks which skills have been loaded via `load_skill`. Duplicate calls are short-circuited with a JSON stub response instead of re-executing the tool.
+
+**Boatswain sandbox**: `write_file` and `run_shell` are registered by `copper_town/tools/sandbox.py` and available only to the boatswain agent. `write_file` enforces a path boundary — all paths must resolve within `BOATSWAIN_SANDBOX_DIR` (default: `sandbox/`). `run_shell` executes commands inside a Docker container with no network, `sandbox/` as the only mount, 512 MB memory, and 1 CPU — Docker is required and there is no subprocess fallback. If Docker is not running, `run_shell` returns an error immediately.
 
 **GWS auth errors**: `gws.py` detects keyring/auth/credential/token keywords in stderr from a non-zero exit and returns a structured error with `"Do not retry this command"`. The quartermaster agent is instructed to stop immediately and report the failure rather than loop. Users must run `gws auth login` to restore credentials.
 
@@ -134,7 +138,7 @@ All handlers live in `REPLSession` in `repl.py`.
 ## Adding a New Skill
 
 1. Create `skills/<name>.md` with `name` and `description` frontmatter
-2. Declare it in the agent's `skills:` list — engine finds it anywhere in `skills/`
+2. Agents discover it via `search_skills` / `load_skill` at runtime, or place it in `skills/_global/` to inject it into every agent's system prompt
 
 ## Adding an MCP Server
 
@@ -271,6 +275,8 @@ There are no automated tests or linting configs in this project.
 - `MAX_PARALLEL_TOOLS` — max concurrent tool calls per LLM response (default: `4`)
 - `MAX_TOOL_OUTPUT_CHARS` — tool output truncation limit (default: `10000`)
 - `MAX_SYSTEM_PROMPT_CHARS` — system prompt truncation limit (default: `50000`)
+- `MAX_MEMORY_PROMPT_CHARS` — per-scope memory injection limit in system prompt (default: `4000`)
+- `CONSUMED_TOOL_MAX_CHARS` — max chars kept for tool results older than last assistant message (default: `500`)
 - `DELEGATION_RETRY_COUNT` — times to retry a failed delegation (default: `1`)
 - `MAX_CONCURRENT_AGENTS` — max agents running in parallel via AgentManager (default: `10`)
 - `AGENT_DEFAULT_TIMEOUT` — timeout for parallel agent runs in seconds (default: `300.0`)
@@ -281,3 +287,5 @@ There are no automated tests or linting configs in this project.
 - `API_KEY` — API key for authenticating `/api/*` requests (empty = no auth)
 - `SESSION_TTL_SECONDS` — session expiry in seconds (default: `7200`)
 - `MAX_CONCURRENT_SESSIONS` — max simultaneous chat sessions (default: `20`)
+- `BOATSWAIN_SANDBOX_DIR` — directory where boatswain writes files and runs commands (default: `sandbox/` inside project root)
+- `BOATSWAIN_DOCKER_IMAGE` — Docker image for `run_shell` execution (default: `python:3.12-slim`); must have `sh` available

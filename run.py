@@ -268,7 +268,7 @@ examples:
                 print(f"{'':>20} tools: {', '.join(a['tools'])}")
             if a["delegates_to"]:
                 print(f"{'':>20} delegates to: {', '.join(a['delegates_to'])}")
-            if a["skills"]:
+            if a.get("skills"):
                 print(f"{'':>20} skills: {', '.join(a['skills'])}")
         return
 
