@@ -1,4 +1,5 @@
 ---
+_upstream_sha: df05a9ba965812a2f9902dce439a7cc5cfbecc53
 description: Add a list of attendees to an existing Google Calendar event and send
   notifications.
 name: recipe-batch-invite-to-event

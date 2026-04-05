@@ -1,4 +1,5 @@
 ---
+_upstream_sha: e1181d8d5beb4f3c7310c658433ee026ce13c19d
 cli_help: gws modelarmor +create-template --help
 description: 'Google Model Armor: Create a new Model Armor template.'
 name: gws-modelarmor-create-template

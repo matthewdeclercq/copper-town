@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 99e7d1d9fa50266e6c7bcfaaacb416684ae8974c
 description: Create a Google Classroom course and invite students.
 name: recipe-create-classroom-course
 version: 0.22.3

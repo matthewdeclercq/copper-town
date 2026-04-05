@@ -1,4 +1,5 @@
 ---
+_upstream_sha: b586bd5eebad0e1f689f3f965fb2a525374654df
 cli_help: gws workflow +file-announce --help
 description: 'Google Workflow: Announce a Drive file in a Chat space.'
 name: gws-workflow-file-announce

@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 7f148161f564d36c3ae07bca97395a047475ab33
 cli_help: gws keep --help
 description: Manage Google Keep notes.
 name: gws-keep

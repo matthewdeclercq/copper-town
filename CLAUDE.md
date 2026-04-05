@@ -27,12 +27,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 │   └── tools/                 # @tool-decorated Python modules
 │       ├── __init__.py        # @tool decorator + ToolRegistry
 │       ├── builtin.py         # read_file, list_files
-│       ├── delegation.py      # delegate_to_agent, delegate_background (schemas only)
+│       ├── delegation.py      # delegate_to_agent, delegate_background, cancel_background_task (schemas only)
 │       ├── gws.py             # gws CLI wrapper
 │       ├── memory_tool.py     # remember (schema only)
 │       ├── regen_gws_skills.py # regen-gws-skills subcommand
 │       ├── skills.py          # search_skills, load_skill
-│       ├── web_search.py      # web_search (ddgs/DuckDuckGo; web-surfer agent only)
+│       ├── web_search.py      # web_search (ddgs/DuckDuckGo; navigator agent only)
 │       └── write_skill.py     # write_skill
 │   ├── sessions.py        # Session + SessionManager for HTTP API
 │   ├── api.py             # Starlette app, endpoints, auth middleware
@@ -68,7 +68,7 @@ description: "One-line description."
 tools:
   - read_file
 delegates_to:
-  - google-workspace
+  - quartermaster
 skills:
   - gws-gmail-send
 mcp_servers:
@@ -80,18 +80,16 @@ model: xai/grok-4-1-fast-non-reasoning-latest  # optional override
 System prompt body...
 ```
 
-- `tools`: always-on: `remember`, `search_skills`, `load_skill`; delegation tools added automatically when `delegates_to` is set; `write_skill` must be declared explicitly
+- `tools`: always-on: `remember`, `search_skills`, `load_skill`; `delegate_background` and `cancel_background_task` added automatically when `delegates_to` is set; `delegate_to_agent` is opt-in (declare it in `tools:` to enable synchronous/blocking delegation); `write_skill` must be declared explicitly
 - `skills`: found by `rglob` anywhere in `skills/`; `skills/_global/` injected into every agent
 - `mcp_servers`: list of server slugs from `mcp.yml`; MCP tools are lazily connected on first use and shadow same-named `@tool` functions
 - `${VAR_NAME}` in agent bodies and skill files is replaced with the env var value at prompt-build time
 
 ## Key Design Decisions
 
-**Skills index**: `skills/generated/` files sort last in `_get_index()`, so a generated skill with the same `name` as a base skill silently overrides it. This is how the google-workspace agent self-corrects stale gws docs.
+**Skills index**: `skills/generated/` files sort last in `_get_index()`, so a generated skill with the same `name` as a base skill silently overrides it. This is how the quartermaster agent self-corrects stale gws docs.
 
-**Delegation**:
-- `delegate_to_agent` — synchronous; blocks until sub-agent finishes; passes optional `context` as a system message
-- `delegate_background` — non-blocking; returns `task_id` immediately; completion notification injected at the next REPL turn via `BackgroundTaskManager` (`engine._bg`); results truncated to `BG_RESULT_MAX_CHARS=800`
+**Delegation**: `delegate_background` (non-blocking) is auto-added for any agent with `delegates_to`. Returns `task_id` immediately; completion notification injected at the next REPL turn via `BackgroundTaskManager` (`engine._bg`); results truncated to `BG_RESULT_MAX_CHARS=800`. `delegate_to_agent` (synchronous, blocking) is available opt-in: declare it in the agent's `tools:` list. The First Mate uses sync delegation to coordinate sequential multi-step projects while running as a background task from The Captain.
 
 **Parallel tool execution**: when the LLM returns multiple tool calls in one response, they run concurrently via `asyncio.gather`. Not configurable.
 
@@ -101,7 +99,7 @@ System prompt body...
 
 **Tool output**: truncated to `MAX_TOOL_OUTPUT_CHARS=10000` with a `[truncated N chars]` suffix.
 
-**GWS auth errors**: `gws.py` detects keyring/auth/credential/token keywords in stderr from a non-zero exit and returns a structured error with `"Do not retry this command"`. The google-workspace agent is instructed to stop immediately and report the failure rather than loop. Users must run `gws auth login` to restore credentials.
+**GWS auth errors**: `gws.py` detects keyring/auth/credential/token keywords in stderr from a non-zero exit and returns a structured error with `"Do not retry this command"`. The quartermaster agent is instructed to stop immediately and report the failure rather than loop. Users must run `gws auth login` to restore credentials.
 
 **GWS skill regen** (`regen_gws_skills.py`): fetches all skills from the upstream `googleworkspace/cli` GitHub repo at the exact installed `gws` version tag (e.g. `v0.22.3`). Converts upstream `SKILL.md` frontmatter (nested `metadata.version`, `metadata.openclaw.cliHelp`) to Copper-Town's flat format (`name`, `description`, `version`, `cli_help`). Writes to `skills/gws/<name>.md` and removes any local files not present upstream. No LLM involved — upstream content is authoritative.
 
@@ -148,7 +146,7 @@ All handlers live in `REPLSession` in `repl.py`.
        command: ["npx", "-y", "@modelcontextprotocol/server-github"]
        env:
          GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
-       agents: [mini-me, web-surfer]   # or ["*"] for all agents
+       agents: [captain, navigator]   # or ["*"] for all agents
    ```
    Supported transports: `stdio` (command + args) and `sse` (url). Env values support `${VAR}` interpolation.
 2. MCP tools are discovered at connection time and shadow same-named `@tool` functions
@@ -162,7 +160,7 @@ Add an entry to `triggers.yml`:
 triggers:
   my-cron-trigger:
     type: cron
-    agent: mini-me
+    agent: captain
     task: "Do something on schedule."
     schedule: "0 9 * * 1-5"    # cron expression
     timeout: 120
@@ -170,7 +168,7 @@ triggers:
 
   my-poll-trigger:
     type: poll
-    agent: accounting
+    agent: purser
     task: "Process: ${poll_result}"
     checker: my-checker          # registered PollChecker name
     checker_args:
@@ -230,7 +228,7 @@ cp .env.example .env   # then fill in API keys
 
 **Always use the project virtualenv** for running or installing packages:
 ```bash
-.venv/bin/python run.py <agent-slug>       # interactive REPL with an agent
+.venv/bin/python run.py <agent-slug>       # interactive REPL with an agent (default: captain)
 .venv/bin/python run.py -t "do something"  # single-task, non-interactive
 .venv/bin/pip install <package>             # install a dependency
 .venv/bin/python -c "import copper_town"    # quick import check

@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 5e8a90cc85158272a73753846d5b5014bfb0890d
 description: Organize research — manage references, notes, and collaboration.
 name: persona-researcher
 version: 0.22.3

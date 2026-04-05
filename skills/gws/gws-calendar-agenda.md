@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 12819b7b8815c37fbbaec7863f1e16b0a345a3e9
 cli_help: gws calendar +agenda --help
 description: 'Google Calendar: Show upcoming events across all calendars.'
 name: gws-calendar-agenda

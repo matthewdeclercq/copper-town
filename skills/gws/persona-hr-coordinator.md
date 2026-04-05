@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 2ed868830c5589fbcdc8c7a13f1cdb476803a0bf
 description: Handle HR workflows — onboarding, announcements, and employee comms.
 name: persona-hr-coordinator
 version: 0.22.3

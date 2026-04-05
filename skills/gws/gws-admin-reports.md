@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 9a37bfa281c62524efa858d416490e5dbc8920a7
 cli_help: gws admin-reports --help
 description: 'Google Workspace Admin SDK: Audit logs and usage reports.'
 name: gws-admin-reports

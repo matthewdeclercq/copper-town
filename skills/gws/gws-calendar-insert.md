@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 076388aa2ce7fa6b9efa5c0dba1900a7bdbc9087
 cli_help: gws calendar +insert --help
 description: 'Google Calendar: Create a new event.'
 name: gws-calendar-insert

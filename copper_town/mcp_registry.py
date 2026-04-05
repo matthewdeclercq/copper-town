@@ -35,7 +35,8 @@ class MCPClientManager:
         self._sessions: dict[str, Any] = {}          # server_slug → ClientSession
         self._tool_map: dict[str, str] = {}           # tool_name → server_slug
         self._schemas: dict[str, list[dict]] = {}     # server_slug → LiteLLM schemas
-        self._exit_stacks: dict[str, AsyncExitStack] = {}
+        self._connection_tasks: dict[str, asyncio.Task] = {}  # server_slug → owner task
+        self._close_events: dict[str, asyncio.Event] = {}     # server_slug → close signal
         self._connect_locks: dict[str, asyncio.Lock] = {}
         self._load_config()
 
@@ -62,7 +63,12 @@ class MCPClientManager:
         }
 
     async def ensure_connected(self, server_slug: str) -> None:
-        """Lazily connect to an MCP server. Idempotent."""
+        """Lazily connect to an MCP server. Idempotent.
+
+        Each connection runs in a dedicated asyncio Task that owns the AsyncExitStack,
+        so the context managers are always entered and exited within the same task —
+        avoiding anyio cancel-scope cross-task errors on close.
+        """
         if not _MCP_AVAILABLE:
             raise RuntimeError("mcp package is not installed. Run: pip install mcp")
         if server_slug not in self._server_configs:
@@ -75,47 +81,68 @@ class MCPClientManager:
                 return
             cfg = self._server_configs[server_slug]
             transport = cfg.get("transport", "stdio")
-            stack = AsyncExitStack()
-            try:
-                if transport == "stdio":
-                    command: list[str] = cfg["command"]
-                    raw_env = cfg.get("env", {})
-                    env = {k: interpolate_env(str(v), fallback_original=False) for k, v in raw_env.items()}
-                    params = StdioServerParameters(
-                        command=command[0],
-                        args=command[1:],
-                        env=env or None,
-                    )
-                    read, write = await stack.enter_async_context(stdio_client(params))
-                elif transport == "sse":
-                    url: str = cfg["url"]
-                    read, write = await stack.enter_async_context(sse_client(url))
-                else:
-                    raise ValueError(f"Unsupported MCP transport: {transport!r}")
+            ready: asyncio.Event = asyncio.Event()
+            close: asyncio.Event = asyncio.Event()
+            error_box: list[Exception] = []
 
-                session = await stack.enter_async_context(ClientSession(read, write))
-                await session.initialize()
-
-                tools_result = await session.list_tools()
-                schemas = [self._tool_to_schema(t) for t in tools_result.tools]
-                for t in tools_result.tools:
-                    if t.name in self._tool_map:
-                        logger.warning(
-                            "MCP tool '%s' from server '%s' shadows existing registration from '%s'.",
-                            t.name, server_slug, self._tool_map[t.name],
+            async def _run_connection() -> None:
+                stack = AsyncExitStack()
+                try:
+                    if transport == "stdio":
+                        command: list[str] = cfg["command"]
+                        raw_env = cfg.get("env", {})
+                        env = {k: interpolate_env(str(v), fallback_original=False) for k, v in raw_env.items()}
+                        params = StdioServerParameters(
+                            command=command[0],
+                            args=command[1:],
+                            env=env or None,
                         )
-                    self._tool_map[t.name] = server_slug
-                self._schemas[server_slug] = schemas
-                self._sessions[server_slug] = session
-                self._exit_stacks[server_slug] = stack
-                logger.info(
-                    "MCP server '%s' connected: %d tools available.",
-                    server_slug,
-                    len(schemas),
-                )
-            except Exception:
-                await stack.aclose()
-                raise
+                        read, write = await stack.enter_async_context(stdio_client(params))
+                    elif transport == "sse":
+                        url: str = cfg["url"]
+                        read, write = await stack.enter_async_context(sse_client(url))
+                    else:
+                        raise ValueError(f"Unsupported MCP transport: {transport!r}")
+
+                    session = await stack.enter_async_context(ClientSession(read, write))
+                    await session.initialize()
+
+                    tools_result = await session.list_tools()
+                    schemas = [self._tool_to_schema(t) for t in tools_result.tools]
+                    for t in tools_result.tools:
+                        if t.name in self._tool_map:
+                            logger.warning(
+                                "MCP tool '%s' from server '%s' shadows existing registration from '%s'.",
+                                t.name, server_slug, self._tool_map[t.name],
+                            )
+                        self._tool_map[t.name] = server_slug
+                    self._schemas[server_slug] = schemas
+                    self._sessions[server_slug] = session
+                    logger.info(
+                        "MCP server '%s' connected: %d tools available.",
+                        server_slug,
+                        len(schemas),
+                    )
+                    ready.set()
+                    await close.wait()
+                except Exception as exc:
+                    error_box.append(exc)
+                    ready.set()
+                finally:
+                    await stack.aclose()
+                    self._sessions.pop(server_slug, None)
+                    self._schemas.pop(server_slug, None)
+                    self._tool_map = {k: v for k, v in self._tool_map.items() if v != server_slug}
+
+            conn_task = asyncio.create_task(_run_connection())
+            await ready.wait()
+
+            if error_box:
+                await asyncio.gather(conn_task, return_exceptions=True)
+                raise error_box[0]
+
+            self._connection_tasks[server_slug] = conn_task
+            self._close_events[server_slug] = close
 
     def servers_for_agent(self, agent_slug: str) -> list[str]:
         """Return server slugs assigned to *agent_slug* via ``agents`` in mcp.yml.
@@ -160,13 +187,18 @@ class MCPClientManager:
         return json.dumps({"success": True})
 
     async def close(self) -> None:
-        """Close all MCP server connections."""
-        for slug, stack in list(self._exit_stacks.items()):
-            try:
-                await stack.aclose()
-            except Exception as exc:
-                logger.warning("Error closing MCP server '%s': %s", slug, exc)
-        self._exit_stacks.clear()
+        """Close all MCP server connections.
+
+        Signals each connection's dedicated task to shut down and waits for it.
+        Safe to call from any asyncio task.
+        """
+        for close_event in self._close_events.values():
+            close_event.set()
+        tasks = list(self._connection_tasks.values())
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._connection_tasks.clear()
+        self._close_events.clear()
         self._sessions.clear()
         self._tool_map.clear()
         self._schemas.clear()

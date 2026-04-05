@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 0141c63cb6f2ac0c06664c8d2d8a11140323528f
 description: Read content from a Google Doc and use it as the body of a Gmail message.
 name: recipe-draft-email-from-doc
 version: 0.22.3

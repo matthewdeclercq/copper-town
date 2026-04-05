@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 514003610d61ccffd67c1b62db68209c2e73cb2f
 cli_help: gws sheets +append --help
 description: 'Google Sheets: Append a row to a spreadsheet.'
 name: gws-sheets-append

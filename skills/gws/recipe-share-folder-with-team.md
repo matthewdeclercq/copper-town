@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 1172e0187edd9c0183ede2624609e65f681430b1
 description: Share a Google Drive folder and all its contents with a list of collaborators.
 name: recipe-share-folder-with-team
 version: 0.22.3

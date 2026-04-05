@@ -1,4 +1,5 @@
 ---
+_upstream_sha: acaaee34e67982cc044638f9bccf06c2da10ec51
 description: Find Gmail messages with attachments and save them to a Google Drive
   folder.
 name: recipe-save-email-attachments

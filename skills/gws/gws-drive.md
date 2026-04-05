@@ -1,4 +1,5 @@
 ---
+_upstream_sha: ec0536f79c37dbb992f5dc25618307b0f34267fb
 cli_help: gws drive --help
 description: 'Google Drive: Manage files, folders, and shared drives.'
 name: gws-drive

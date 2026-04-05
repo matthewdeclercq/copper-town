@@ -57,7 +57,12 @@ class CopperAPI {
     return res.json();
   }
 
-  async sendMessage(sessionId, content, { onToken, onDone, onError, onTasks }) {
+  async getTasks() {
+    const res = await this._fetch("/api/tasks");
+    return res.json();
+  }
+
+  async sendMessage(sessionId, content, { onToken, onDone, onError, onTasks, onNotifications }) {
     const res = await fetch(this.baseUrl + `/api/sessions/${sessionId}/messages`, {
       method: "POST",
       headers: this._headers(true),
@@ -95,6 +100,7 @@ class CopperAPI {
             else if (eventType === "done") onDone(parsed.content);
             else if (eventType === "error") onError(parsed.error);
             else if (eventType === "tasks" && onTasks) onTasks(parsed);
+            else if (eventType === "notifications" && onNotifications) onNotifications(parsed);
           } catch (e) {
             // skip malformed data
           }

@@ -1,4 +1,5 @@
 ---
+_upstream_sha: d6a805fc3f93b5a721d151afb2ae5d4f81a4ba6f
 cli_help: gws modelarmor --help
 description: 'Google Model Armor: Filter user-generated content for safety.'
 name: gws-modelarmor

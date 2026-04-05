@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 3a6a1cad88881a04217099f2118580ce2ea16ed8
 cli_help: gws gmail +read --help
 description: 'Gmail: Read a message and extract its body or headers.'
 name: gws-gmail-read

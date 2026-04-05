@@ -65,6 +65,21 @@ class MemoryStore:
                 raise
         await self._db.commit()
 
+        # Non-destructive migration: rename agent slugs to nautical theme
+        _slug_migrations = {
+            "mini-me": "captain",
+            "accounting": "purser",
+            "google-workspace": "quartermaster",
+            "web-search": "navigator",
+            "browser": "helmsman",
+        }
+        for old_slug, new_slug in _slug_migrations.items():
+            await self._db.execute(
+                "UPDATE memories SET agent_slug = ? WHERE agent_slug = ?",
+                (new_slug, old_slug),
+            )
+        await self._db.commit()
+
     @property
     def _conn(self) -> aiosqlite.Connection:
         if self._db is None:

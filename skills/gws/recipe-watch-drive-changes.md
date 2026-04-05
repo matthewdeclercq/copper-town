@@ -1,4 +1,5 @@
 ---
+_upstream_sha: d3645b757b8f56d63af1038c2c0d52918b4b20dd
 description: Subscribe to change notifications on a Google Drive file or folder.
 name: recipe-watch-drive-changes
 version: 0.22.3

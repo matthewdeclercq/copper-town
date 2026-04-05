@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 2f44996d4550e26d08dc62551245383558ff99e2
 description: Administer IT — monitor security and configure Workspace.
 name: persona-it-admin
 version: 0.22.3

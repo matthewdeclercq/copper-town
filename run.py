@@ -94,8 +94,9 @@ async def _cmd_regen_gws_skills(filter_names: list[str] | None) -> None:
     from copper_town.tools.regen_gws_skills import regen_gws_skills
     results = await regen_gws_skills(filter_names=filter_names)
     updated = [r for r in results if r["status"] == "updated"]
+    unchanged = [r for r in results if r["status"] == "unchanged"]
     errors = [r for r in results if r["status"] == "error"]
-    print(f"\nDone: {len(updated)} updated, {len(errors)} errors.")
+    print(f"\nDone: {len(updated)} updated, {len(unchanged)} unchanged, {len(errors)} errors.")
     for e in errors:
         print(f"  [ERROR] {e['skill']}: {e['error']}")
 
@@ -192,10 +193,10 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 examples:
-  python run.py                          # interactive with Mini Me
-  python run.py accounting               # interactive with Accounting
+  python run.py                          # interactive with The Captain
+  python run.py purser                   # interactive with The Purser
   python run.py -t "process receipt"     # single-task mode
-  python run.py --parallel "accounting:process receipt" "google-workspace:list files"
+  python run.py --parallel "purser:process receipt" "quartermaster:list files"
   python run.py --list-agents            # show available agents
   python run.py --list-tools             # show available tools
   python run.py --verbose -t "task"      # stream trace events to stderr
@@ -213,8 +214,8 @@ examples:
     parser.add_argument(
         "agent",
         nargs="?",
-        default="mini-me",
-        help="Agent to use (default: mini-me)",
+        default="captain",
+        help="Agent to use (default: captain)",
     )
     parser.add_argument(
         "-t", "--task",

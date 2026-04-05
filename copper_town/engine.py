@@ -84,6 +84,9 @@ _delegation_chain: contextvars.ContextVar[list[str]] = contextvars.ContextVar(
 _last_usage: contextvars.ContextVar[dict] = contextvars.ContextVar(
     "last_usage",
 )
+_hallucination_fired: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "hallucination_fired",
+)
 
 
 def _record_usage(usage: object) -> None:
@@ -286,12 +289,15 @@ class Engine:
 
         # Delegation tools if allowed and not at max depth
         include_delegation = agent.delegates_to and depth < MAX_DELEGATION_DEPTH
-        if include_delegation and "delegate_to_agent" not in tool_names:
-            tool_names.append("delegate_to_agent")
+        if include_delegation and "delegate_background" not in tool_names:
+            tool_names.append("delegate_background")
         if not include_delegation and "delegate_background" in tool_names:
             tool_names.remove("delegate_background")
         if "delegate_background" in tool_names and "cancel_background_task" not in tool_names:
             tool_names.append("cancel_background_task")
+        # Opt-in sync delegation: strip if agent declared it but delegation is not allowed
+        if not include_delegation and "delegate_to_agent" in tool_names:
+            tool_names.remove("delegate_to_agent")
 
         schemas = self.registry.get_schemas(tool_names)
 
@@ -304,20 +310,20 @@ class Engine:
                 schemas = [s for s in schemas if s["function"]["name"] not in mcp_names]
                 schemas.extend(mcp_schemas)
 
-        # Patch delegation tool descriptions with valid targets for this agent
+        # Patch delegation tool description with valid targets for this agent
         if include_delegation:
             valid_slugs = ", ".join(agent.delegates_to)
             patched: list[dict] = []
             for schema in schemas:
                 fn_name = schema.get("function", {}).get("name")
-                if fn_name == "delegate_to_agent":
+                if fn_name == "delegate_background":
                     schema = {**schema, "function": {**schema["function"], "description": (
-                        f"Delegate a task to a sub-agent. "
+                        f"Delegate a task to a sub-agent in the background. "
                         f"Valid targets for this agent: {valid_slugs}"
                     )}}
-                elif fn_name == "delegate_background":
+                elif fn_name == "delegate_to_agent":
                     schema = {**schema, "function": {**schema["function"], "description": (
-                        f"Delegate a task to a sub-agent in the background (non-blocking). "
+                        f"Delegate a task to another agent and wait for the result (blocking). "
                         f"Valid targets for this agent: {valid_slugs}"
                     )}}
                 patched.append(schema)
@@ -338,7 +344,7 @@ class Engine:
     )
     _CORRECTION_MESSAGE = (
         "[Engine] You described delegating a task but did not call any tool. "
-        "You MUST call delegate_background now to actually dispatch the task. "
+        "You MUST call a delegation tool now to actually dispatch the task. "
         "Do not write text — call the tool immediately."
     )
 
@@ -358,12 +364,16 @@ class Engine:
 
         Returns True if a correction was injected (caller should ``continue`` the loop).
         """
-        if already_corrected or "delegate_background" not in allowed_tools:
+        if already_corrected or (
+            "delegate_background" not in allowed_tools
+            and "delegate_to_agent" not in allowed_tools
+        ):
             return False
         if not self._detect_hallucinated_delegation(content, agent_slug):
             return False
         messages.append({"role": "assistant", "content": content})
         messages.append({"role": "user", "content": self._CORRECTION_MESSAGE})
+        _hallucination_fired.set(True)
         return True
 
     # Long, structured responses are explanations, not hallucinated actions.
@@ -884,7 +894,7 @@ class Engine:
         )
         # Mutate in-place so the caller's reference stays in sync
         messages[:] = [messages[0], {"role": "system", "content": notice_text}] + keep_tail
-        logger.warning("Context trimmed for agent '%s': evicted %d messages.", agent_slug, len(to_trim))
+        logger.info("Context trimmed for agent '%s': evicted %d messages.", agent_slug, len(to_trim))
 
     # ── Completion-loop helpers ────────────────────────────────────
 
@@ -961,6 +971,7 @@ class Engine:
             s["function"]["name"] for s in tools
         }
         _last_usage.set({"in": 0, "out": 0})
+        _hallucination_fired.set(False)
 
         last_tool: str | None = None
         # Hallucination correction: track whether we've already injected a correction
@@ -1190,7 +1201,7 @@ class Engine:
 
         return agent_result
 
-    async def run_interactive(self, agent_slug: str = "mini-me") -> None:
+    async def run_interactive(self, agent_slug: str = "captain") -> None:
         """Interactive REPL loop with the specified agent."""
         await self._ensure_initialized()
         from .repl import REPLSession

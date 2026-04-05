@@ -1,5 +1,5 @@
-const CACHE_NAME = "copper-town-v1";
-const SHELL_FILES = ["/", "/css/style.css", "/js/store.js", "/js/api.js", "/js/app.js"];
+const CACHE_NAME = "copper-town-v2";
+const SHELL_FILES = ["/", "/manifest.json", "/css/style.css", "/js/store.js", "/js/api.js", "/js/app.js"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE_NAME).then((c) => c.addAll(SHELL_FILES)));

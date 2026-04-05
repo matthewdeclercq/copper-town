@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 8392a5d7ee78adcbece999b0e09b9474dd8b5332
 description: Send a team announcement via both Gmail and a Google Chat space.
 name: recipe-send-team-announcement
 version: 0.22.3

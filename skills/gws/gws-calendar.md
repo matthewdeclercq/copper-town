@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 9419fbbef4900adf68b5d04a855b4f5bde2a8a0e
 cli_help: gws calendar --help
 description: 'Google Calendar: Manage calendars and events.'
 name: gws-calendar

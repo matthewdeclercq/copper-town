@@ -1,4 +1,5 @@
 ---
+_upstream_sha: ab47efa9a03dd047399fc5bc2d81d141dc153653
 description: Enable a Gmail out-of-office auto-reply with a custom message and date
   range.
 name: recipe-create-vacation-responder

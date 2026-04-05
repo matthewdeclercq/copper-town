@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 505f9c16ec687e2470a8c3458fbed54b27d37587
 description: Read data from a Google Sheet and create a formatted Google Docs report.
 name: recipe-generate-report-from-sheet
 version: 0.22.3

@@ -1,4 +1,5 @@
 ---
+_upstream_sha: ebfdeaaba69136c4d3985b4cbb76f359cca11c8b
 cli_help: gws chat +send --help
 description: 'Google Chat: Send a message to a space.'
 name: gws-chat-send

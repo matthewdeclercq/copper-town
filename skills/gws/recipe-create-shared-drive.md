@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 9322111c18ab20ec832a3865f3343e1fcc6df06f
 description: Create a Google Shared Drive and add members with appropriate roles.
 name: recipe-create-shared-drive
 version: 0.22.3

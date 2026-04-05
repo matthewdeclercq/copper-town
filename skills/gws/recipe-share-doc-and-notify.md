@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 650c3dc88d9caaaf3eb7793ee2532a03ee8bcc40
 description: Share a Google Docs document with edit access and email collaborators
   the link.
 name: recipe-share-doc-and-notify

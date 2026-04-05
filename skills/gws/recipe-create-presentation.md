@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 759350e48d7aa98823506a908ed721fc8dc6c73a
 description: Create a new Google Slides presentation and add initial slides.
 name: recipe-create-presentation
 version: 0.22.3

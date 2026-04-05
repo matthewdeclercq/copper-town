@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 1c6186249a9d2a09fd81e6d926c3ae1212323629
 description: Plan and manage events — scheduling, invitations, and logistics.
 name: persona-event-coordinator
 version: 0.22.3

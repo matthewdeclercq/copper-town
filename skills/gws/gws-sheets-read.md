@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 965f0503818a94f877ea1306e92f9d67c118b72e
 cli_help: gws sheets +read --help
 description: 'Google Sheets: Read values from a spreadsheet.'
 name: gws-sheets-read

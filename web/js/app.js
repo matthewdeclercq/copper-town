@@ -83,17 +83,27 @@
 
   // ── Messages ──
 
-  function addMessage(role, content) {
+  function addMessage(role, content, beforeEl = null) {
     const div = document.createElement("div");
     div.className = `msg ${role}`;
     div.textContent = content;
-    msgContainer.appendChild(div);
+    if (beforeEl) {
+      msgContainer.insertBefore(div, beforeEl);
+    } else {
+      msgContainer.appendChild(div);
+    }
     scrollBottom();
     return div;
   }
 
   function addError(text) {
     return addMessage("error", text);
+  }
+
+  function addNotification(text, beforeEl = null) {
+    const lines = text.split("\n");
+    const summary = lines[1] ? `${lines[0]} — ${lines[1]}` : lines[0];
+    return addMessage("notification", summary, beforeEl);
   }
 
   function addTaskTree(tasks) {
@@ -179,6 +189,9 @@
         },
         onTasks(tasks) {
           addTaskTree(tasks);
+        },
+        onNotifications(notes) {
+          for (const note of notes) addNotification(note, bubble);
         },
       });
     } catch (e) {

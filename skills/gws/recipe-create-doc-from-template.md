@@ -1,4 +1,5 @@
 ---
+_upstream_sha: f0cb7b71e28423937720e014549b547ed44aefe6
 description: Copy a Google Docs template, fill in content, and share with collaborators.
 name: recipe-create-doc-from-template
 version: 0.22.3

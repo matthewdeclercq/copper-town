@@ -1,4 +1,5 @@
 ---
+_upstream_sha: cf335588bb96d1803c14ce949a9fc4c69e07de29
 description: Share Google Drive files with all attendees of a Google Calendar event.
 name: recipe-share-event-materials
 version: 0.22.3

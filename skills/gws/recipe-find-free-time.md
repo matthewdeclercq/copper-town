@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 092a52443f181f268eee4503e4f377fde964a71b
 description: Query Google Calendar free/busy status for multiple users to find a meeting
   slot.
 name: recipe-find-free-time

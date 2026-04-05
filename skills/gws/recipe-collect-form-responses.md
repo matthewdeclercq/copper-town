@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 208623c73ed09d1c8df49ef858a0e436a16b8f48
 description: Retrieve and review responses from a Google Form.
 name: recipe-collect-form-responses
 version: 0.22.3

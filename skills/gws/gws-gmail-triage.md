@@ -1,4 +1,5 @@
 ---
+_upstream_sha: ae3fba0745c91de29735dfc9c7f8ae42a3138298
 cli_help: gws gmail +triage --help
 description: 'Gmail: Show unread inbox summary (sender, subject, date).'
 name: gws-gmail-triage

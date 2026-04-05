@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 8ff0f40e3b03e257ad2850ddaa7233b65487125f
 description: Duplicate a Google Sheets template tab for a new month of tracking.
 name: recipe-copy-sheet-for-new-month
 version: 0.22.3

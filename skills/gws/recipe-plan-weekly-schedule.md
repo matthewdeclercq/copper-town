@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 0a8e519b7a1d9ba344bb4d25cc0156442c1bcdcf
 description: Review your Google Calendar week, identify gaps, and add events to fill
   them.
 name: recipe-plan-weekly-schedule

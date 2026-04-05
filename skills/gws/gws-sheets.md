@@ -1,4 +1,5 @@
 ---
+_upstream_sha: b006d3faffa9c47cf3af31c13a9edeb74e278741
 cli_help: gws sheets --help
 description: 'Google Sheets: Read and write spreadsheets.'
 name: gws-sheets

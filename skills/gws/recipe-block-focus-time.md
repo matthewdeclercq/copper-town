@@ -1,4 +1,5 @@
 ---
+_upstream_sha: a1bbc2bb54d28d6f9141803b8cc46d7ca391788b
 description: Create recurring focus time blocks on Google Calendar to protect deep
   work hours.
 name: recipe-block-focus-time

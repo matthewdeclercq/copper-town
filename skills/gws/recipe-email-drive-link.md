@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 0f08c40fcd97a067018409f86a7f5244e538e1d6
 description: Share a Google Drive file and email the link with a message to recipients.
 name: recipe-email-drive-link
 version: 0.22.3

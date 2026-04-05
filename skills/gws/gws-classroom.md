@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 5bd86b7b95e276c68f91c88080a359b51712e484
 cli_help: gws classroom --help
 description: 'Google Classroom: Manage classes, rosters, and coursework.'
 name: gws-classroom

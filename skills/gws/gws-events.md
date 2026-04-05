@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 9301f4f65e544cfa4ccc2729765d0239a5a4dde8
 cli_help: gws events --help
 description: Subscribe to Google Workspace events.
 name: gws-events

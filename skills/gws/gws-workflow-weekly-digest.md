@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 7413c56d8ec89cf1384adad992e916bc36b9e4f1
 cli_help: gws workflow +weekly-digest --help
 description: 'Google Workflow: Weekly summary: this week''s meetings + unread email
   count.'

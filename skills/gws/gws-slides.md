@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 7bcbab972bfd1dc3c65475ab5b0dcd9c4f5e75e2
 cli_help: gws slides --help
 description: 'Google Slides: Read and write presentations.'
 name: gws-slides

@@ -1,4 +1,5 @@
 ---
+_upstream_sha: b2187501f13fa83c4a4e9eca7331421910aded44
 cli_help: gws modelarmor +sanitize-response --help
 description: 'Google Model Armor: Sanitize a model response through a Model Armor
   template.'

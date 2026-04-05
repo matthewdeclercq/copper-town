@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 841c60f2a2834c841d5394328de59d25ec41d33d
 description: Read event data from a Google Sheets spreadsheet and create Google Calendar
   entries for each row.
 name: recipe-create-events-from-sheet

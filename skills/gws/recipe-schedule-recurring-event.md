@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 8897e9e83fe7422198d4ed95f90871bec4a46545
 description: Create a recurring Google Calendar event with attendees.
 name: recipe-schedule-recurring-event
 version: 0.22.3

@@ -328,4 +328,15 @@ footer {
 
 .task-tree-pipe { user-select: none; }
 
+/* Background task completion notification */
+.msg.notification {
+  align-self: center;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  max-width: 90%;
+  padding: 2px 10px;
+  opacity: 0.7;
+}
+
 .hidden { display: none !important; }

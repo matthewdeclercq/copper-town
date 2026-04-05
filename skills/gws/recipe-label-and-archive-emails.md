@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 79ffd11a9f0906c3b7fc796098f02934ac45c9d6
 description: Apply Gmail labels to matching messages and archive them to keep your
   inbox clean.
 name: recipe-label-and-archive-emails

@@ -1,11 +1,15 @@
-servers: {}
+servers:
+  chrome-devtools:
+    transport: stdio
+    command: ["npx", "-y", "chrome-devtools-mcp@latest", "--no-usage-statistics", "--no-performance-crux"]
+    agents: [helmsman]
 # Example stdio server:
 #   github:
 #     transport: stdio
 #     command: ["npx", "-y", "@modelcontextprotocol/server-github"]
 #     env:
 #       GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
-#     agents: [mini-me, research]   # which agents get these tools
+#     agents: [captain, research]   # which agents get these tools
 #
 # Example SSE server:
 #   some-sse-service:

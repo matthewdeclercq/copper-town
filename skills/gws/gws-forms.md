@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 0c2424a1f443b2677feccb349948b80b6b39890d
 cli_help: gws forms --help
 description: Read and write Google Forms.
 name: gws-forms

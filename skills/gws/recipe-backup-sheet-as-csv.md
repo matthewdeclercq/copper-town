@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 23af4089bcde87800901764c46408a1e3c3a078a
 description: Export a Google Sheets spreadsheet as a CSV file for local backup or
   processing.
 name: recipe-backup-sheet-as-csv

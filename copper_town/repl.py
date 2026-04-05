@@ -8,10 +8,12 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .events import EventType
 from .terminal import BOLD, CYAN, DIM, GREEN, RESET, YELLOW
 
 if TYPE_CHECKING:
     from .engine import Engine
+    from .events import Event
 
 
 class REPLSession:
@@ -27,6 +29,7 @@ class REPLSession:
         from prompt_toolkit import PromptSession
         from prompt_toolkit.formatted_text import ANSI
         from prompt_toolkit.history import FileHistory
+        from .engine import _hallucination_fired, _last_usage
 
         engine = self._engine
         agent_slug = self._agent_slug
@@ -149,20 +152,36 @@ class REPLSession:
             status = DIM + f"\u27f3 {n} background {'task' if n == 1 else 'tasks'} running" + RESET
             return ANSI(status + "\n\n" + base)
 
-        def _print_task_tree(new_ids: list[str]) -> None:
-            n = len(new_ids)
+        def _print_agent_tree(names: list[str], verb: str, detail: str | None = None) -> None:
+            n = len(names)
             label = "agent" if n == 1 else "agents"
-            print(f"\n{BOLD}{GREEN}● {n} {label} launched{RESET}")
-            for i, task_id in enumerate(new_ids):
-                meta = engine._bg.get_meta(task_id)
-                slug = meta.get("agent", "?")
-                name = engine.agents[slug].name if slug in engine.agents else slug
+            print(f"\n{BOLD}{GREEN}● {n} {label} {verb}{RESET}")
+            for i, name in enumerate(names):
                 is_last = i == n - 1
                 connector = "└──" if is_last else "├──"
-                sub_indent = "    " if is_last else "│   "
                 print(f"{connector} {BOLD}{name}{RESET}")
-                print(f"{sub_indent}{DIM}└ Running in the background{RESET}")
+                if detail:
+                    sub_indent = "    " if is_last else "│   "
+                    print(f"{sub_indent}{DIM}└ {detail}{RESET}")
             print()
+
+        def _agent_display_name(slug: str) -> str:
+            return engine.agents[slug].name if slug in engine.agents else slug
+
+        def _print_task_tree(new_ids: list[str]) -> None:
+            names = []
+            for task_id in new_ids:
+                meta = engine._bg.get_meta(task_id)
+                names.append(_agent_display_name(meta.get("agent", "?")))
+            _print_agent_tree(names, "launched", "Running in the background")
+
+        _sync_agents: list[str] = []
+
+        async def _on_task_delegated(event: Event) -> None:
+            if event.source == agent.slug:
+                _sync_agents.append(_agent_display_name(event.data.get("target", "?")))
+
+        engine.event_bus.subscribe(EventType.TASK_DELEGATED, _on_task_delegated)
 
         try:
             while True:
@@ -202,6 +221,7 @@ class REPLSession:
                 accumulated = ""
                 spinner_stopped = False
                 tasks_before = set(engine._bg.active_ids())
+                _sync_agents.clear()
 
                 def on_token(chunk: str) -> None:
                     nonlocal accumulated, spinner_stopped
@@ -224,13 +244,7 @@ class REPLSession:
                 new_task_ids = [t for t in engine._bg.active_ids() if t not in tasks_before]
 
                 elapsed = time.monotonic() - t0
-                # If hallucination correction fired, response differs from accumulated.
-                # Show the original (dimmed) so the user can still see what the agent said.
-                corrected = (
-                    accumulated
-                    and response
-                    and accumulated.strip() != response.strip()
-                )
+                corrected = _hallucination_fired.get(False)
                 final_text = response or accumulated
 
                 print(f"\n{agent_label}")
@@ -241,7 +255,6 @@ class REPLSession:
                 if final_text:
                     console.print(Markdown(final_text))
 
-                from .engine import _last_usage
                 usage = _last_usage.get({"in": 0, "out": 0})
                 token_info = (
                     "\033[2m"
@@ -254,9 +267,13 @@ class REPLSession:
                 if new_task_ids:
                     _print_task_tree(new_task_ids)
 
+                if _sync_agents:
+                    _print_agent_tree(_sync_agents, "used")
+
         except (KeyboardInterrupt, asyncio.CancelledError):
             print("\n")
         finally:
+            engine.event_bus.unsubscribe(EventType.TASK_DELEGATED, _on_task_delegated)
             if engine._bg.has_tasks:
                 remaining = engine._bg.all_tasks()
                 for bg_task in remaining:

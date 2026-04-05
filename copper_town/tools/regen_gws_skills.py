@@ -43,27 +43,50 @@ def _get_github_token() -> str | None:
     return None
 
 
-async def _fetch_skill_list(client: httpx.AsyncClient, tag: str) -> list[str]:
-    """Return all skill directory names from the upstream repo at the given tag."""
-    url = f"{GITHUB_API}/repos/{UPSTREAM_REPO}/contents/skills"
-    resp = await client.get(url, params={"ref": tag})
+async def _fetch_tree(client: httpx.AsyncClient, tag: str) -> dict[str, str]:
+    """Fetch the full repo tree and return {skill_name: blob_sha} for all SKILL.md files."""
+    url = f"{GITHUB_API}/repos/{UPSTREAM_REPO}/git/trees/{tag}"
+    resp = await client.get(url, params={"recursive": "1"})
     resp.raise_for_status()
-    return [item["name"] for item in resp.json() if item["type"] == "dir"]
+    data = resp.json()
+    if data.get("truncated"):
+        print("warning: tree response was truncated; some skills may be missed", flush=True)
+    skills: dict[str, str] = {}
+    for entry in data.get("tree", []):
+        if entry["type"] != "blob":
+            continue
+        parts = entry["path"].split("/")
+        if len(parts) == 3 and parts[0] == "skills" and parts[2] == "SKILL.md":
+            skills[parts[1]] = entry["sha"]
+    return skills
 
 
-async def _fetch_skill_content(client: httpx.AsyncClient, tag: str, skill_name: str) -> str | None:
-    """Fetch and decode the SKILL.md content for a skill from upstream."""
-    url = f"{GITHUB_API}/repos/{UPSTREAM_REPO}/contents/skills/{skill_name}/SKILL.md"
-    resp = await client.get(url, params={"ref": tag})
+async def _fetch_blob(client: httpx.AsyncClient, sha: str) -> str | None:
+    """Fetch and decode a blob by SHA."""
+    url = f"{GITHUB_API}/repos/{UPSTREAM_REPO}/git/blobs/{sha}"
+    resp = await client.get(url)
     if resp.status_code == 404:
         return None
     resp.raise_for_status()
     data = resp.json()
-    raw = data.get("content", "")
-    return base64.b64decode(raw.replace("\n", "")).decode("utf-8")
+    content = data.get("content", "")
+    encoding = data.get("encoding", "base64")
+    if encoding == "base64":
+        return base64.b64decode(content.replace("\n", "")).decode("utf-8")
+    return content
 
 
-def _convert_frontmatter(content: str) -> str:
+def _read_local_sha(path: Path) -> str | None:
+    """Read the _upstream_sha from a local skill file's frontmatter, or None."""
+    try:
+        text = path.read_text(encoding="utf-8")
+        front, _ = parse_markdown_frontmatter(text)
+        return front.get("_upstream_sha")
+    except Exception:
+        return None
+
+
+def _convert_frontmatter(content: str, upstream_sha: str | None = None) -> str:
     """Convert upstream SKILL.md frontmatter to Copper-Town format."""
     front, body = parse_markdown_frontmatter(content)
 
@@ -80,6 +103,8 @@ def _convert_frontmatter(content: str) -> str:
     cli_help = openclaw.get("cliHelp")
     if cli_help:
         new_front["cli_help"] = cli_help
+    if upstream_sha is not None:
+        new_front["_upstream_sha"] = upstream_sha
 
     front_str = yaml.dump(new_front, default_flow_style=False, allow_unicode=True).strip()
     return f"---\n{front_str}\n---\n\n{body}\n"
@@ -91,8 +116,8 @@ async def regen_gws_skills(
 ) -> list[dict]:
     """Sync skills/gws/ to match the upstream repo at the installed gws version.
 
-    Fetches all skills from GitHub, converts frontmatter, writes local files,
-    and removes any local files not present upstream.
+    Uses the Git Trees API for single-call change detection, then only
+    fetches blobs for skills whose SHA differs from the local copy.
 
     Args:
         filter_names: If provided, only sync skills whose name contains any of
@@ -117,45 +142,59 @@ async def regen_gws_skills(
         headers["Authorization"] = f"Bearer {token}"
     else:
         print("warning: no GitHub token found — unauthenticated requests limited to 60/hour", flush=True)
+
     async with httpx.AsyncClient(headers=headers, timeout=30) as client:
         try:
-            upstream_names = await _fetch_skill_list(client, tag)
+            tree = await _fetch_tree(client, tag)
         except Exception as exc:
-            print(f"error: could not fetch skill list from GitHub: {exc}", flush=True)
+            print(f"error: could not fetch tree from GitHub: {exc}", flush=True)
             return []
 
-        print(f"Found {len(upstream_names)} skills upstream.", flush=True)
-
+        upstream_names = sorted(tree.keys())
         to_process = upstream_names
         if filter_names:
             to_process = [n for n in upstream_names if any(f.lower() in n.lower() for f in filter_names)]
 
-        total = len(to_process)
-        width = len(str(total))
         gws_dir = SKILLS_DIR / "gws"
         gws_dir.mkdir(parents=True, exist_ok=True)
 
+        # Diff SHAs to find changed skills
+        to_fetch: list[tuple[str, str, Path]] = []  # (name, sha, local_path)
         results: list[dict] = []
 
-        for i, skill_name in enumerate(to_process, 1):
-            print(f"  [{i:>{width}}/{total}] {skill_name}...", end="", flush=True)
-            local_path = gws_dir / f"{skill_name}.md"
+        for name in to_process:
+            local_path = gws_dir / f"{name}.md"
+            upstream_sha = tree[name]
+            if _read_local_sha(local_path) == upstream_sha:
+                results.append({"skill": name, "status": "unchanged", "path": str(local_path), "error": None})
+            else:
+                to_fetch.append((name, upstream_sha, local_path))
 
-            try:
-                content = await _fetch_skill_content(client, tag, skill_name)
-            except Exception as exc:
-                print(f" error (fetch: {exc})", flush=True)
-                results.append({"skill": skill_name, "status": "error", "path": str(local_path), "error": str(exc)})
-                continue
+        print(f"Found {len(upstream_names)} skills upstream, {len(to_fetch)} changed.", flush=True)
+
+        # Fetch changed blobs concurrently
+        sem = asyncio.Semaphore(10)
+
+        async def _fetch_and_write(name: str, sha: str, local_path: Path) -> dict:
+            async with sem:
+                try:
+                    content = await _fetch_blob(client, sha)
+                except Exception as exc:
+                    print(f"  {name}... error ({exc})", flush=True)
+                    return {"skill": name, "status": "error", "path": str(local_path), "error": str(exc)}
 
             if content is None:
-                print(" skipped (no SKILL.md)", flush=True)
-                results.append({"skill": skill_name, "status": "skipped", "path": str(local_path), "error": None})
-                continue
+                print(f"  {name}... skipped (blob fetch returned empty)", flush=True)
+                return {"skill": name, "status": "skipped", "path": str(local_path), "error": None}
 
-            local_path.write_text(_convert_frontmatter(content), encoding="utf-8")
-            print(" done", flush=True)
-            results.append({"skill": skill_name, "status": "updated", "path": str(local_path), "error": None})
+            local_path.write_text(_convert_frontmatter(content, upstream_sha=sha), encoding="utf-8")
+            print(f"  {name}... updated", flush=True)
+            return {"skill": name, "status": "updated", "path": str(local_path), "error": None}
+
+        fetch_results = await asyncio.gather(
+            *(_fetch_and_write(name, sha, path) for name, sha, path in to_fetch)
+        )
+        results.extend(fetch_results)
 
     # Remove local skills not present upstream (only when no filter active)
     if not filter_names:

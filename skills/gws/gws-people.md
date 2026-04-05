@@ -1,4 +1,5 @@
 ---
+_upstream_sha: 46e00cc34a2062a738fb1d40a29d60f0386e36cb
 cli_help: gws people --help
 description: 'Google People: Manage contacts and profiles.'
 name: gws-people
