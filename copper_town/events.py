@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -41,17 +40,14 @@ class Event:
 
 
 class EventBus:
-    """Async pub/sub event bus with history."""
+    """Async pub/sub event bus."""
 
-    def __init__(self, history_limit: int = 1000) -> None:
+    def __init__(self) -> None:
         self._subscribers: dict[EventType, list[EventCallback]] = {}
         self._global_subscribers: list[EventCallback] = []
-        self._history: deque[Event] = deque(maxlen=history_limit)
 
     def subscribe(self, event_type: EventType, callback: EventCallback) -> None:
-        if event_type not in self._subscribers:
-            self._subscribers[event_type] = []
-        self._subscribers[event_type].append(callback)
+        self._subscribers.setdefault(event_type, []).append(callback)
 
     def subscribe_all(self, callback: EventCallback) -> None:
         self._global_subscribers.append(callback)
@@ -62,14 +58,8 @@ class EventBus:
                 cb for cb in self._subscribers[event_type] if cb is not callback
             ]
 
-    def unsubscribe_all(self, callback: EventCallback) -> None:
-        self._global_subscribers = [
-            cb for cb in self._global_subscribers if cb is not callback
-        ]
-
     async def publish(self, event: Event) -> None:
         """Fire all matching callbacks concurrently. Failed callbacks log warnings."""
-        self._history.append(event)
         callbacks = list(self._global_subscribers)
         if event.type in self._subscribers:
             callbacks.extend(self._subscribers[event.type])
@@ -83,10 +73,3 @@ class EventBus:
                     logger.warning(
                         "Event callback failed for %s: %s", event.type, result
                     )
-
-    def recent_events(
-        self, event_type: EventType | None = None, limit: int = 20
-    ) -> list[Event]:
-        if event_type is None:
-            return list(self._history)[-limit:]
-        return [e for e in self._history if e.type == event_type][-limit:]

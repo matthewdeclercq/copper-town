@@ -72,6 +72,7 @@ delegates_to:
   - quartermaster
 mcp_servers:
   - github
+allow_global_memory: true   # optional; default false — grants permission to write to shared global memory
 memory_guidance: |
   What to save / not save to memory.
 model: xai/grok-4-1-fast-non-reasoning-latest  # optional override
@@ -87,7 +88,7 @@ System prompt body...
 
 **Skills index**: `skills/generated/` files sort last in `_get_index()`, so a generated skill with the same `name` as a base skill silently overrides it. This is how the quartermaster agent self-corrects stale gws docs.
 
-**Delegation**: `delegate_background` (non-blocking) is auto-added for any agent with `delegates_to`. Returns `task_id` immediately; completion notification injected at the next REPL turn via `BackgroundTaskManager` (`engine._bg`); results truncated to `BG_RESULT_MAX_CHARS=800`. `delegate_to_agent` (synchronous, blocking) is available opt-in: declare it in the agent's `tools:` list. The First Mate uses sync delegation to coordinate sequential multi-step projects while running as a background task from The Captain.
+**Delegation**: `delegate_background` (non-blocking) is auto-added for any agent with `delegates_to`. Returns `task_id` immediately; results truncated to `BG_RESULT_MAX_CHARS=800`. When the task finishes, the agent auto-responds without user input: in the REPL, the notification is printed immediately and a new completion is triggered automatically; in the HTTP API/web UI, the response streams via `GET /api/sessions/{id}/stream`. `delegate_to_agent` (synchronous, blocking) is available opt-in: declare it in the agent's `tools:` list. The First Mate uses sync delegation to coordinate sequential multi-step projects while running as a background task from The Captain.
 
 **Parallel tool execution**: when the LLM returns multiple tool calls in one response, they run concurrently via `asyncio.gather`. Not configurable.
 
@@ -128,6 +129,10 @@ Available in any interactive session (no LLM round-trip):
 | `/model [name]` | Show current model or switch to a new one |
 
 All handlers live in `REPLSession` in `repl.py`.
+
+## Adding a New Tool
+
+Use `@tool` for tools executed directly by the registry. Use `@tool(schema_only=True)` for tools whose execution is handled by the engine before `execute_async` is reached (e.g. `delegate_background`, `remember`) — these register a schema but no callable, so the engine intercepts them by name in `_completion_loop`.
 
 ## Adding a New Agent
 
@@ -210,6 +215,7 @@ Starts a Starlette app on `API_HOST:API_PORT`. Auth: `X-Api-Key` header if `API_
 | `DELETE` | `/api/sessions/{id}` | Delete session (triggers background memory extraction) |
 | `POST` | `/api/sessions/{id}/messages` | Send message `{"content": "..."}` → SSE stream |
 | `GET` | `/api/sessions/{id}/messages` | Fetch user/assistant messages |
+| `GET` | `/api/sessions/{id}/stream` | Long-lived SSE stream for auto-respond events |
 | `GET` | `/api/tasks` | List active background tasks |
 
 **SSE event types** (from `POST .../messages`):
@@ -218,6 +224,11 @@ Starts a Starlette app on `API_HOST:API_PORT`. Auth: `X-Api-Key` header if `API_
 - `error` — failure `{"error": "..."}`
 - `notifications` — completed background task summaries (array of strings)
 - `tasks` — newly launched background tasks `[{"task_id": ..., "name": ...}]`
+
+**SSE event types** (from `GET .../stream` — auto-respond after background task completion):
+- `token` — streaming token chunk `{"t": "..."}`
+- `done` — final response `{"content": "..."}`
+- `error` — failure `{"error": "..."}`
 
 Static PWA files from `web/` are mounted at `/` if the directory exists.
 
@@ -271,6 +282,7 @@ There are no automated tests or linting configs in this project.
 - `CONTEXT_SUMMARIZE` — `true`/`false`; summarize evicted context instead of dropping (default: `true`)
 - `MEMORY_COMPRESS_ENABLED` — set to `false` if memory contains sensitive data you don't want sent to the LLM
 - `MEMORY_MAX_LINES` — row count threshold that triggers LLM memory compression (default: `30`)
+- `MEMORY_MIN_MESSAGES` — minimum conversation messages before end-of-session memory extraction runs (default: `12`)
 - `MEMORY_WRITE_MAX_CHARS` — max chars accepted per `remember()` call (default: `2000`)
 - `MAX_PARALLEL_TOOLS` — max concurrent tool calls per LLM response (default: `4`)
 - `MAX_TOOL_OUTPUT_CHARS` — tool output truncation limit (default: `10000`)

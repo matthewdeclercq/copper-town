@@ -89,6 +89,10 @@ _last_usage: contextvars.ContextVar[dict] = contextvars.ContextVar(
 _hallucination_fired: contextvars.ContextVar[bool] = contextvars.ContextVar(
     "hallucination_fired",
 )
+# Auto-respond: set by API event_generator, inherited by _bg_run via create_task context copy
+_bg_messages_ctx: contextvars.ContextVar[list | None] = contextvars.ContextVar("_bg_messages_ctx", default=None)
+_bg_push_ctx: contextvars.ContextVar[asyncio.Queue | None] = contextvars.ContextVar("_bg_push_ctx", default=None)
+_bg_lock_ctx: contextvars.ContextVar[asyncio.Lock | None] = contextvars.ContextVar("_bg_lock_ctx", default=None)
 
 
 def _record_usage(usage: object) -> None:
@@ -114,6 +118,7 @@ class AgentDefinition:
     body: str = ""
     model: str | None = None
     memory_guidance: str = ""
+    allow_global_memory: bool = False
 
 
 class Engine:
@@ -193,6 +198,7 @@ class Engine:
             body=body,
             model=front.get("model"),
             memory_guidance=front.get("memory_guidance", ""),
+            allow_global_memory=bool(front.get("allow_global_memory", False)),
         )
 
     # ── System prompt assembly ─────────────────────────────────────
@@ -271,7 +277,7 @@ class Engine:
         return result
 
     def _resolve_tools(
-        self, agent: AgentDefinition, depth: int
+        self, agent: AgentDefinition, depth: int, mcp_servers: list[str] | None = None,
     ) -> list[dict]:
         """Collect tool schemas for the agent."""
         tool_names = list(agent.tools)
@@ -296,7 +302,8 @@ class Engine:
         schemas = self.registry.get_schemas(tool_names)
 
         # Append MCP schemas; MCP wins on name collisions with @tool functions
-        mcp_servers = self._effective_mcp_servers(agent)
+        if mcp_servers is None:
+            mcp_servers = self._effective_mcp_servers(agent)
         if mcp_servers and self.mcp_registry is not None:
             mcp_schemas = self.mcp_registry.get_schemas(mcp_servers)
             if mcp_schemas:
@@ -618,10 +625,10 @@ class Engine:
         )
         return self._err(f"Agent '{agent.name}' cannot delegate to '{raw_target}'. Valid targets: {valid}")
 
-    async def _handle_delegation(
+    def _validate_delegation(
         self, args: dict, agent: AgentDefinition, depth: int,
-    ) -> str:
-        """Validate and execute delegation to a sub-agent."""
+    ) -> tuple[str, str, str] | str:
+        """Extract and validate delegation args. Returns (target_slug, task, context) or error JSON."""
         raw_target = args.get("agent", "")
         task = args.get("task", "")
         context = args.get("context", "")
@@ -629,12 +636,20 @@ class Engine:
         target_slug = self._resolve_target_slug(raw_target, agent)
         if target_slug is None:
             return self._delegation_error(raw_target, agent)
-
         if target_slug not in self.agents:
             return self._err(f"Agent '{target_slug}' not found.")
-
         if depth >= MAX_DELEGATION_DEPTH:
             return self._err("Maximum delegation depth reached.")
+        return target_slug, task, context
+
+    async def _handle_delegation(
+        self, args: dict, agent: AgentDefinition, depth: int,
+    ) -> str:
+        """Validate and execute delegation to a sub-agent."""
+        validated = self._validate_delegation(args, agent, depth)
+        if isinstance(validated, str):
+            return validated
+        target_slug, task, context = validated
 
         # Use contextvars for delegation chain (create new list, don't mutate)
         chain = _delegation_chain.get([]) + [agent.slug]
@@ -682,53 +697,49 @@ class Engine:
         self, args: dict, agent: AgentDefinition, depth: int
     ) -> str:
         """Start a delegated task in the background and return immediately with a task_id."""
-        raw_target = args.get("agent", "")
-        task = args.get("task", "")
-        context = args.get("context", "")
-
-        target_slug = self._resolve_target_slug(raw_target, agent)
-        if target_slug is None:
-            return self._delegation_error(raw_target, agent)
-
-        if target_slug not in self.agents:
-            return self._err(f"Agent '{target_slug}' not found.")
-        if depth >= MAX_DELEGATION_DEPTH:
-            return self._err("Maximum delegation depth reached.")
+        validated = self._validate_delegation(args, agent, depth)
+        if isinstance(validated, str):
+            return validated
+        target_slug, task, context = validated
 
         task_id = self._bg.new_task_id(target_slug)
         confirmed_task = task if "confirmed" in task.lower() else f"{task} — confirmed, proceed."
 
+        def _fmt_notification(status: str, agent_name: str, detail: str) -> str:
+            return (
+                f"[Background task {status}]\n"
+                f"Agent: {agent_name} | Task ID: {task_id}\n"
+                f"Task: {task[:120]}\n"
+                f"{detail}"
+            )
+
         async def _bg_run() -> None:
+            # Capture auto-respond context (copied from parent task by create_task)
+            parent_messages = _bg_messages_ctx.get(None)
+            channel = _bg_push_ctx.get(None)
+            lock = _bg_lock_ctx.get(None)
+            # Clear so nested delegations inside run_task do NOT also auto-respond
+            _bg_push_ctx.set(None)
+            _bg_lock_ctx.set(None)
+
             agent_name = self.agents[target_slug].name if target_slug in self.agents else target_slug
+            notification: str
             try:
                 result = await self.run_task(target_slug, confirmed_task, depth=depth + 1, context=context)
                 if result.succeeded:
-                    preview = result.result[:BG_RESULT_MAX_CHARS]
-                    notification = (
-                        f"[Background task completed]\n"
-                        f"Agent: {agent_name} | Task ID: {task_id}\n"
-                        f"Task: {task[:120]}\n"
-                        f"Result:\n{preview}"
-                    )
+                    notification = _fmt_notification("completed", agent_name, f"Result:\n{result.result[:BG_RESULT_MAX_CHARS]}")
                 else:
-                    notification = (
-                        f"[Background task failed]\n"
-                        f"Agent: {agent_name} | Task ID: {task_id}\n"
-                        f"Task: {task[:120]}\n"
-                        f"Error: {result.error or 'unknown error'}"
-                    )
+                    notification = _fmt_notification("failed", agent_name, f"Error: {result.error or 'unknown error'}")
             except Exception as exc:
-                notification = (
-                    f"[Background task error]\n"
-                    f"Agent: {agent_name} | Task ID: {task_id}\n"
-                    f"Task: {task[:120]}\n"
-                    f"Error: {exc}"
-                )
+                notification = _fmt_notification("error", agent_name, f"Error: {exc}")
             finally:
                 self._bg.complete(task_id)
                 self._invalidate_prompt_app()
 
-            self._bg.add_notification(notification)
+            if channel is not None and parent_messages is not None and lock is not None:
+                await self._auto_respond_bg(agent, parent_messages, lock, channel, notification)
+            else:
+                self._bg.add_notification(notification)
 
         bg_task = asyncio.create_task(_bg_run())
         self._bg.register(task_id, target_slug, task, bg_task)
@@ -745,6 +756,29 @@ class Engine:
             "agent": target_slug,
             "message": f"Task dispatched to {self.agents[target_slug].name} in the background. Result delivered next turn.",
         })
+
+    async def _auto_respond_bg(
+        self,
+        agent: "AgentDefinition",
+        messages: list[dict],
+        lock: asyncio.Lock,
+        channel: asyncio.Queue,
+        notification: str,
+    ) -> None:
+        """Run a follow-up completion after a bg task completes; push events to session queue."""
+        async with lock:
+            messages.append({"role": "system", "content": notification})
+
+            def on_token(chunk: str) -> None:
+                channel.put_nowait({"event": "token", "data": {"t": chunk}})
+
+            try:
+                result = await self._completion_loop(agent, messages, depth=0, on_token=on_token)
+                messages.append({"role": "assistant", "content": result})
+                channel.put_nowait({"event": "done", "data": {"content": result}})
+            except Exception as exc:
+                logger.warning("_auto_respond_bg failed for '%s': %s", agent.slug, exc)
+                channel.put_nowait({"event": "error", "data": {"error": str(exc)}})
 
     async def _handle_cancel_background(self, args: dict) -> str:
         """Cancel a running background task by task_id."""
@@ -773,6 +807,12 @@ class Engine:
 
         if not content:
             return self._err("No content provided to remember.")
+
+        if scope == "global" and not agent.allow_global_memory:
+            return self._err(
+                f"Agent '{agent.name}' is not permitted to write to global memory. "
+                "Use scope='agent' to save to your own memory."
+            )
 
         # Collapse multi-line content to a single line (prevents header injection)
         content = " ".join(content.splitlines())
@@ -1005,21 +1045,17 @@ class Engine:
                 *[self.mcp_registry.ensure_connected(s) for s in mcp_servers]
             )
 
-        tools = self._resolve_tools(agent, depth)
+        tools = self._resolve_tools(agent, depth, mcp_servers=mcp_servers)
         allowed_tools: set[str] = {
             s["function"]["name"] for s in tools
         }
         _last_usage.set({"in": 0, "out": 0})
         _hallucination_fired.set(False)
+        _bg_messages_ctx.set(messages)
 
         last_tool: str | None = None
         loaded_skills: set[str] = set()
-        # Hallucination correction: track whether we've already injected a correction
-        # this loop so we don't loop infinitely.
         _hallucination_corrected = False
-        # Local alias so we can suppress streaming after a hallucination is detected
-        # (correction turn should not stream — the streamed text is already shown).
-        _use_on_token = on_token
 
         for _iter in range(MAX_TOOL_ITERATIONS):
             await self._trim_context_window(messages, agent.slug)
@@ -1029,14 +1065,13 @@ class Engine:
             _llm_t0 = time.monotonic()
 
             # Streaming path: on_token is called per chunk; _LLMResult carries the outcome.
-            if _use_on_token is not None:
+            if on_token is not None and not _hallucination_corrected:
                 stream_result = await self._call_llm_stream(
-                    messages, tools or None, on_token=_use_on_token, model=agent.model
+                    messages, tools or None, on_token=on_token, model=agent.model
                 )
                 _llm_latency_ms = (time.monotonic() - _llm_t0) * 1000
 
                 if stream_result.text is not None:
-                    # Pure text response — no tool calls
                     content = stream_result.text
                     usage = _last_usage.get({"in": 0, "out": 0})
                     await self._emit_llm_complete(
@@ -1047,12 +1082,10 @@ class Engine:
                         messages, content, allowed_tools, _hallucination_corrected, agent.slug
                     ):
                         _hallucination_corrected = True
-                        _use_on_token = None  # suppress streaming for correction turn
                         continue
                     return content
 
                 if stream_result.tool_calls is not None:
-                    # Tool-call response from stream
                     usage = _last_usage.get({"in": 0, "out": 0})
                     await self._emit_llm_complete(
                         agent.slug, agent.model, usage["in"], usage["out"],
@@ -1100,7 +1133,6 @@ class Engine:
                 _llm_latency_ms, _iter,
             )
 
-            # If no tool calls, return text content
             if not message.tool_calls:
                 content = message.content or ""
                 # Some Ollama models return "{}" as a no-op placeholder instead of real text.
@@ -1235,10 +1267,13 @@ class Engine:
             )
 
         event_type = EventType.AGENT_COMPLETED if agent_result.succeeded else EventType.AGENT_FAILED
+        event_data: dict = {"status": agent_result.status.value, "task": task}
+        if agent_result.error:
+            event_data["error"] = agent_result.error
         await self.event_bus.publish(Event(
             type=event_type,
             source=agent_slug,
-            data={"status": agent_result.status.value, "task": task},
+            data=event_data,
         ))
 
         return agent_result

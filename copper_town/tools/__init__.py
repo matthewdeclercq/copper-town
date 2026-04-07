@@ -36,57 +36,62 @@ def _python_type_to_json_schema(t: type) -> dict:
     return mapping.get(t, {"type": "string"})
 
 
-def tool(fn: Callable) -> Callable:
+def tool(fn: Callable | None = None, *, schema_only: bool = False) -> Callable:
     """Decorator that attaches a JSON-schema tool definition to a function.
 
     Uses the function's docstring, parameter annotations, and defaults to
     build the schema automatically.
+
+    Use ``@tool(schema_only=True)`` for tools whose schema is registered but
+    whose execution is handled by the engine (e.g. delegation, memory).  These
+    are excluded from the registry's callable table — the engine intercepts
+    them before ``execute_async`` is reached.
     """
-    hints = get_type_hints(fn)
-    sig = inspect.signature(fn)
-    doc = inspect.getdoc(fn) or ""
+    def decorator(fn: Callable) -> Callable:
+        hints = get_type_hints(fn)
+        sig = inspect.signature(fn)
+        doc = inspect.getdoc(fn) or ""
 
-    # Split docstring: first line = description, rest may contain param docs
-    lines = doc.strip().splitlines()
-    description = lines[0] if lines else fn.__name__
+        lines = doc.strip().splitlines()
+        description = lines[0] if lines else fn.__name__
 
-    # Parse param descriptions from docstring (simple "param: desc" format)
-    param_docs: dict[str, str] = {}
-    for line in lines[1:]:
-        line = line.strip().lstrip("-").strip()
-        if ":" in line:
-            pname, pdesc = line.split(":", 1)
-            pname = pname.strip()
-            if pname in sig.parameters:
-                param_docs[pname] = pdesc.strip()
+        param_docs: dict[str, str] = {}
+        for line in lines[1:]:
+            line = line.strip().lstrip("-").strip()
+            if ":" in line:
+                pname, pdesc = line.split(":", 1)
+                pname = pname.strip()
+                if pname in sig.parameters:
+                    param_docs[pname] = pdesc.strip()
 
-    # Build properties
-    properties: dict[str, Any] = {}
-    required: list[str] = []
-    for name, param in sig.parameters.items():
-        prop = _python_type_to_json_schema(hints.get(name, str))
-        if name in param_docs:
-            prop["description"] = param_docs[name]
-        properties[name] = prop
-        if param.default is inspect.Parameter.empty:
-            required.append(name)
+        properties: dict[str, Any] = {}
+        required: list[str] = []
+        for name, param in sig.parameters.items():
+            prop = _python_type_to_json_schema(hints.get(name, str))
+            if name in param_docs:
+                prop["description"] = param_docs[name]
+            properties[name] = prop
+            if param.default is inspect.Parameter.empty:
+                required.append(name)
 
-    schema = {
-        "type": "function",
-        "function": {
-            "name": fn.__name__,
-            "description": description,
-            "parameters": {
-                "type": "object",
-                "properties": properties,
-                "required": required,
+        fn._tool_schema = {
+            "type": "function",
+            "function": {
+                "name": fn.__name__,
+                "description": description,
+                "parameters": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                },
             },
-        },
-    }
+        }
+        fn._schema_only = schema_only
+        return fn
 
-    fn._tool_schema = schema
-    fn._is_tool = True
-    return fn
+    if fn is not None:
+        return decorator(fn)
+    return decorator
 
 
 class ToolRegistry:
@@ -105,12 +110,10 @@ class ToolRegistry:
                 continue
             module = importlib.import_module(f".{info.name}", package=__package__)
             for _name, obj in inspect.getmembers(module, inspect.isfunction):
-                if getattr(obj, "_is_tool", False):
-                    self._tools[obj.__name__] = obj
+                if hasattr(obj, "_tool_schema"):
                     self._schemas[obj.__name__] = obj._tool_schema
-
-    def get_function(self, name: str) -> Callable | None:
-        return self._tools.get(name)
+                    if not getattr(obj, "_schema_only", False):
+                        self._tools[obj.__name__] = obj
 
     def get_schema(self, name: str) -> dict | None:
         return self._schemas.get(name)
@@ -119,10 +122,10 @@ class ToolRegistry:
         """Return schemas for the given tool names, or all if names is None."""
         if names is None:
             return list(self._schemas.values())
-        return [s for n, s in self._schemas.items() if n in names]
+        return [self._schemas[n] for n in names if n in self._schemas]
 
     def list_tools(self) -> list[str]:
-        return sorted(self._tools.keys())
+        return sorted(self._schemas.keys())
 
     async def execute_async(self, name: str, arguments: dict) -> str:
         """Execute a tool by name (async). Wraps sync tools via asyncio.to_thread."""

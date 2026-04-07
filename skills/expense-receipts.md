@@ -9,9 +9,9 @@ When given a receipt file (e.g. from Downloads or Desktop), follow this workflow
 
 ## IDs
 
-- **Spreadsheet:** `${EXPENSE_SPREADSHEET_ID}`
+Check memory for `expense_spreadsheet_id` and `expense_drive_folder_id`. If not found, search Google Drive for the expense spreadsheet and folder by name, then `remember()` both IDs with `pin=True` for future use.
+
 - **Sheet/tab name:** `Expenses (2026)` — always specify this tab explicitly in every read and write operation.
-- **Drive folder:** `${EXPENSE_DRIVE_FOLDER_ID}`
 
 ## Workflow
 

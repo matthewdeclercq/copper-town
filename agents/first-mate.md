@@ -10,6 +10,7 @@ delegates_to:
   - helmsman
   - boatswain
   - signalman
+allow_global_memory: true
 memory_guidance: |
   Save: project decomposition patterns that worked well, standing rules for how specialists
   should be coordinated (e.g. "always research before acting"), and any corrections to

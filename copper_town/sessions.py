@@ -22,6 +22,7 @@ class Session:
     created_at: float
     last_accessed: float
     lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
+    event_queue: asyncio.Queue = field(default_factory=asyncio.Queue, repr=False)
 
 
 class SessionManager:

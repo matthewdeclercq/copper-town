@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, Callable
 
 
 class BackgroundTaskManager:
@@ -14,6 +14,7 @@ class BackgroundTaskManager:
         self._meta: dict[str, dict[str, str]] = {}
         self._notifications: list[str] = []
         self._counter: dict[str, int] = {}
+        self.on_notification: Callable[[str], None] | None = None
 
     # ── ID generation ──────────────────────────────────────────────
 
@@ -42,13 +43,10 @@ class BackgroundTaskManager:
         if bg_task is None:
             return "not_found"
         if bg_task.done():
-            self._tasks.pop(task_id, None)
-            self._meta.pop(task_id, None)
+            self.complete(task_id)
             return "already_completed"
         bg_task.cancel()
-        self._tasks.pop(task_id, None)
-        self._meta.pop(task_id, None)
-        # Drop any queued notifications that reference this task
+        self.complete(task_id)
         self._notifications = [n for n in self._notifications if task_id not in n]
         return "cancelled"
 
@@ -59,6 +57,8 @@ class BackgroundTaskManager:
 
     def add_notification(self, text: str) -> None:
         self._notifications.append(text)
+        if self.on_notification is not None:
+            self.on_notification(text)
 
     def drain_notifications(self) -> list[str]:
         """Return and clear all pending notification strings."""
@@ -96,6 +96,3 @@ class BackgroundTaskManager:
     def all_tasks(self) -> list["asyncio.Task[Any]"]:
         return list(self._tasks.values())
 
-    def is_done(self, task_id: str) -> bool:
-        t = self._tasks.get(task_id)
-        return t is None or t.done()

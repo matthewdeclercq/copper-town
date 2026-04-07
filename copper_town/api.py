@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
 from typing import TYPE_CHECKING
@@ -16,6 +17,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from sse_starlette.sse import EventSourceResponse
 
 from .config import API_KEY
+from .engine import _bg_messages_ctx, _bg_push_ctx, _bg_lock_ctx
 from .sessions import SessionManager
 
 if TYPE_CHECKING:
@@ -42,7 +44,7 @@ class APIKeyMiddleware:
 
         headers = dict(scope.get("headers", []))
         key = headers.get(b"x-api-key", b"").decode()
-        if key != API_KEY:
+        if not hmac.compare_digest(key, API_KEY):
             response = JSONResponse({"error": "Unauthorized"}, status_code=401)
             await response(scope, receive, send)
             return
@@ -147,18 +149,21 @@ async def send_message(request: Request) -> Response:
             session.messages.append({"role": "user", "content": content})
 
             queue: asyncio.Queue = asyncio.Queue()
-            full_response = ""
 
             def on_token(chunk: str):
                 queue.put_nowait(("token", chunk))
 
+            # Wire auto-respond: bg tasks spawned in _completion_loop inherit these via create_task
+            _bg_messages_ctx.set(session.messages)
+            _bg_push_ctx.set(session.event_queue)
+            _bg_lock_ctx.set(session.lock)
+
             async def run_loop():
-                nonlocal full_response
                 try:
-                    full_response = await engine._completion_loop(
+                    result = await engine._completion_loop(
                         agent, session.messages, depth=0, on_token=on_token,
                     )
-                    queue.put_nowait(("done", full_response))
+                    queue.put_nowait(("done", result))
                 except Exception as e:
                     queue.put_nowait(("error", str(e)))
 
@@ -216,6 +221,24 @@ async def get_messages(request: Request) -> Response:
     return JSONResponse(messages)
 
 
+async def session_stream(request: Request) -> Response:
+    """Persistent SSE stream for auto-respond events from background task completions."""
+    sm: SessionManager = request.app.state.sessions
+    session = sm.get(request.path_params["session_id"])
+    if not session:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+
+    async def event_gen():
+        try:
+            while True:
+                event = await session.event_queue.get()
+                yield {"event": event["event"], "data": json.dumps(event["data"])}
+        except asyncio.CancelledError:
+            pass
+
+    return EventSourceResponse(event_gen(), headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"})
+
+
 async def list_tasks(request: Request) -> Response:
     engine: Engine = request.app.state.engine
     if not engine._bg.has_tasks:
@@ -238,6 +261,7 @@ def create_app(engine: Engine) -> Starlette:
         Route("/api/sessions/{session_id}", delete_session, methods=["DELETE"]),
         Route("/api/sessions/{session_id}/messages", send_message, methods=["POST"]),
         Route("/api/sessions/{session_id}/messages", get_messages, methods=["GET"]),
+        Route("/api/sessions/{session_id}/stream", session_stream, methods=["GET"]),
         Route("/api/tasks", list_tasks, methods=["GET"]),
     ]
 

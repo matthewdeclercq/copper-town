@@ -127,131 +127,85 @@ class SessionTracer:
 
 def format_trace(path: Path, records: list[dict]) -> None:
     """Pretty-print a trace file's contents to stdout."""
-    _HR = "─" * 70
-
+    HR = "─" * 70
+    events = [r for r in records if r.get("record") == "event"]
     session_open = next((r for r in records if r.get("record") == "session_open"), None)
     session_close = next((r for r in records if r.get("record") == "session_close"), None)
-    events = [r for r in records if r.get("record") == "event"]
 
     print(f"Trace: {path}")
-    print(_HR)
-
-    # Timeline
+    print(HR)
     print("\nTimeline")
-    print(_HR)
+    print(HR)
 
-    agents_active: set[str] = set()
-    llm_calls = 0
-    tool_calls = 0
-    tool_failures = 0
-    delegations = 0
-    memory_ops = 0
-    trigger_fires = 0
-    total_in = 0
-    total_out = 0
-    failures: list[dict] = []
+    agents: set[str] = set()
+    counts = {"llm": 0, "tool": 0, "tool_fail": 0, "deleg": 0, "mem": 0, "trig": 0, "in": 0, "out": 0}
+    failures: list[str] = []
 
     for ev in events:
         etype = ev.get("type", "")
         source = ev.get("source", "?")
         elapsed = ev.get("elapsed_s", 0.0)
         data = ev.get("data", {})
-
-        agents_active.add(source)
+        agents.add(source)
 
         depth = data.get("depth", 0) if etype == "agent_started" else 0
-        indent = "  " + ("  " * depth)
+        prefix = f"{'  ' + '  ' * depth}+{elapsed:>5.1f}s  {source:<18} "
 
         if etype == "agent_started":
-            task_preview = (data.get("task") or "")[:55]
-            depth_str = f"  depth={depth}" if depth else ""
-            print(f"{indent}+{elapsed:>5.1f}s  {source:<18} STARTED  \"{task_preview}\"{depth_str}")
+            depth_sfx = f"  depth={depth}" if depth else ""
+            print(f"{prefix}STARTED  \"{(data.get('task') or '')[:55]}\"{depth_sfx}")
         elif etype == "agent_completed":
-            print(f"{indent}+{elapsed:>5.1f}s  {source:<18} DONE     status={data.get('status', '?')}")
+            print(f"{prefix}DONE     status={data.get('status', '?')}")
         elif etype == "agent_failed":
             err = (data.get("error") or data.get("status", "?"))[:50]
-            print(f"{indent}+{elapsed:>5.1f}s  {source:<18} FAILED   error={err}")
-            failures.append({"type": "agent", "source": source, "error": err, "elapsed_s": elapsed})
+            print(f"{prefix}FAILED   error={err}")
+            failures.append(f"  +{elapsed:>5.1f}s  AGENT FAILED  {source}  {err}")
         elif etype == "llm_call_complete":
-            llm_calls += 1
-            in_tok = data.get("prompt_tokens", 0)
-            out_tok = data.get("completion_tokens", 0)
-            total_in += in_tok
-            total_out += out_tok
-            latency = data.get("latency_ms", 0)
-            model = data.get("model", "?")
-            tools_count = data.get("tool_calls_count", 0)
-            print(
-                f"{indent}+{elapsed:>5.1f}s  {source:<18} LLM      "
-                f"model={model}  in={in_tok}  out={out_tok}  tools={tools_count}  {latency:.0f}ms"
-            )
+            counts["llm"] += 1
+            in_tok, out_tok = data.get("prompt_tokens", 0), data.get("completion_tokens", 0)
+            counts["in"] += in_tok; counts["out"] += out_tok
+            print(f"{prefix}LLM      model={data.get('model', '?')}  in={in_tok}  out={out_tok}"
+                  f"  tools={data.get('tool_calls_count', 0)}  {data.get('latency_ms', 0):.0f}ms")
         elif etype == "tool_call_complete":
-            tool_calls += 1
-            success = data.get("success", True)
-            if not success:
-                tool_failures += 1
-            tool_name = data.get("tool", "?")
-            latency = data.get("latency_ms", 0)
-            status = "ok" if success else f"ERR({data.get('error', '?')})"
-            print(f"{indent}+{elapsed:>5.1f}s  {source:<18} TOOL     {tool_name}  {latency:.0f}ms  {status}")
-            if not success:
-                failures.append({
-                    "type": "tool",
-                    "source": source,
-                    "tool": tool_name,
-                    "error": data.get("error", "?"),
-                    "elapsed_s": elapsed,
-                })
+            counts["tool"] += 1
+            ok = data.get("success", True)
+            if not ok:
+                counts["tool_fail"] += 1
+                failures.append(f"  +{elapsed:>5.1f}s  TOOL FAILED   {source}/{data.get('tool', '?')}  {data.get('error', '?')}")
+            status = "ok" if ok else f"ERR({data.get('error', '?')})"
+            print(f"{prefix}TOOL     {data.get('tool', '?')}  {data.get('latency_ms', 0):.0f}ms  {status}")
         elif etype == "task_delegated":
-            delegations += 1
-            target = data.get("target", "?")
-            task_preview = (data.get("task") or "")[:45]
-            print(f"{indent}+{elapsed:>5.1f}s  {source:<18} DELEGATE → {target}  \"{task_preview}\"")
+            counts["deleg"] += 1
+            print(f"{prefix}DELEGATE → {data.get('target', '?')}  \"{(data.get('task') or '')[:45]}\"")
         elif etype == "memory_updated":
-            memory_ops += 1
-            scope = data.get("scope", "?")
-            content = (data.get("content") or "")[:50]
-            print(f"{indent}+{elapsed:>5.1f}s  {source:<18} MEMORY   scope={scope}  \"{content}\"")
+            counts["mem"] += 1
+            print(f"{prefix}MEMORY   scope={data.get('scope', '?')}  \"{(data.get('content') or '')[:50]}\"")
         elif etype == "trigger_fired":
-            trigger_fires += 1
-            name = data.get("name", "?")
-            agent = data.get("agent", "?")
-            ttype = data.get("trigger_type", "?")
-            print(f"{indent}+{elapsed:>5.1f}s  {source:<18} TRIG FIRE  name={name}  agent={agent}  type={ttype}")
+            counts["trig"] += 1
+            print(f"{prefix}TRIG FIRE  name={data.get('name', '?')}  agent={data.get('agent', '?')}  type={data.get('trigger_type', '?')}")
         elif etype == "trigger_completed":
-            name = data.get("name", "?")
-            status = data.get("status", "?")
-            print(f"{indent}+{elapsed:>5.1f}s  {source:<18} TRIG DONE  name={name}  status={status}")
+            print(f"{prefix}TRIG DONE  name={data.get('name', '?')}  status={data.get('status', '?')}")
         elif etype == "trigger_error":
-            name = data.get("name", "?")
             err = (data.get("error") or "?")[:50]
-            print(f"{indent}+{elapsed:>5.1f}s  {source:<18} TRIG ERROR name={name}  error={err}")
-            failures.append({"type": "trigger", "source": source, "name": name, "error": err, "elapsed_s": elapsed})
+            print(f"{prefix}TRIG ERROR name={data.get('name', '?')}  error={err}")
+            failures.append(f"  +{elapsed:>5.1f}s  TRIG FAILED   {data.get('name', '?')}  {err}")
 
-    # Summary
     print(f"\nSummary")
-    print(_HR)
-
-    session_ts = session_open.get("ts", "?") if session_open else "?"
-    duration = session_close.get("elapsed_s", 0.0) if session_close else (events[-1].get("elapsed_s", 0.0) if events else 0.0)
-
-    print(f"  Session start : {session_ts}")
-    print(f"  Duration      : {duration:.1f}s")
-    print(f"  Agents active : {', '.join(sorted(agents_active)) or 'none'}")
-    print(f"  LLM calls     : {llm_calls}")
-    print(f"  Tool calls    : {tool_calls}  (failed: {tool_failures})")
-    print(f"  Delegations   : {delegations}")
-    print(f"  Memory ops    : {memory_ops}")
-    print(f"  Trigger fires : {trigger_fires}")
-    print(f"  Tokens in/out : {total_in} / {total_out}")
+    print(HR)
+    ts = session_open.get("ts", "?") if session_open else "?"
+    dur = session_close.get("elapsed_s", 0.0) if session_close else (events[-1].get("elapsed_s", 0.0) if events else 0.0)
+    print(f"  Session start : {ts}")
+    print(f"  Duration      : {dur:.1f}s")
+    print(f"  Agents active : {', '.join(sorted(agents)) or 'none'}")
+    print(f"  LLM calls     : {counts['llm']}")
+    print(f"  Tool calls    : {counts['tool']}  (failed: {counts['tool_fail']})")
+    print(f"  Delegations   : {counts['deleg']}")
+    print(f"  Memory ops    : {counts['mem']}")
+    print(f"  Trigger fires : {counts['trig']}")
+    print(f"  Tokens in/out : {counts['in']} / {counts['out']}")
 
     if failures:
         print(f"\nFailures")
-        print(_HR)
-        for f in failures:
-            if f["type"] == "agent":
-                print(f"  +{f['elapsed_s']:>5.1f}s  AGENT FAILED  {f['source']}  {f['error']}")
-            elif f["type"] == "tool":
-                print(f"  +{f['elapsed_s']:>5.1f}s  TOOL FAILED   {f['source']}/{f['tool']}  {f['error']}")
-            elif f["type"] == "trigger":
-                print(f"  +{f['elapsed_s']:>5.1f}s  TRIG FAILED   {f['name']}  {f['error']}")
+        print(HR)
+        for line in failures:
+            print(line)

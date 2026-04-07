@@ -112,7 +112,6 @@ def _convert_frontmatter(content: str, upstream_sha: str | None = None) -> str:
 
 async def regen_gws_skills(
     filter_names: list[str] | None = None,
-    model: str | None = None,
 ) -> list[dict]:
     """Sync skills/gws/ to match the upstream repo at the installed gws version.
 
@@ -123,7 +122,6 @@ async def regen_gws_skills(
         filter_names: If provided, only sync skills whose name contains any of
                       these strings (case-insensitive). Stale file removal is
                       skipped when a filter is active.
-        model: Unused; kept for API compatibility.
 
     Returns:
         List of dicts with keys: skill, status, path, error.

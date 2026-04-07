@@ -16,6 +16,7 @@
 
   let api = null;
   let sending = false;
+  let _activeStream = null;
 
   // ── Init ──
 
@@ -67,7 +68,41 @@
 
   // ── Sessions ──
 
+  function openAutoRespondStream(sessionId) {
+    if (_activeStream) { _activeStream.cancel(); _activeStream = null; }
+    const bubble = addMessage("assistant typing", "");
+    let pendingText = "";
+    let rafQueued = false;
+
+    function flushTokens() {
+      bubble.textContent = pendingText;
+      scrollBottom();
+      rafQueued = false;
+    }
+
+    api.subscribeStream(sessionId, {
+      onToken(t) {
+        pendingText += t;
+        if (!rafQueued) {
+          rafQueued = true;
+          requestAnimationFrame(flushTokens);
+        }
+      },
+      onDone(content) {
+        bubble.classList.remove("typing");
+        bubble.textContent = content;
+        scrollBottom();
+        _activeStream = null;
+      },
+      onError() {
+        bubble.remove();
+        _activeStream = null;
+      },
+    }).then((handle) => { _activeStream = handle; });
+  }
+
   async function newSession() {
+    if (_activeStream) { _activeStream.cancel(); _activeStream = null; }
     const slug = agentSelect.value;
     if (!slug) return;
     Store.agent = slug;
@@ -189,6 +224,7 @@
         },
         onTasks(tasks) {
           addTaskTree(tasks);
+          openAutoRespondStream(Store.sessionId);
         },
         onNotifications(notes) {
           for (const note of notes) addNotification(note, bubble);
@@ -249,6 +285,7 @@
         const info = document.createElement("span");
         info.textContent = `${s.agent} (${s.messages} msgs)`;
         info.addEventListener("click", async () => {
+          if (_activeStream) { _activeStream.cancel(); _activeStream = null; }
           Store.sessionId = s.id;
           msgContainer.innerHTML = "";
           try {

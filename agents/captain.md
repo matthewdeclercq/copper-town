@@ -12,6 +12,7 @@ delegates_to:
   - helmsman
   - boatswain
   - signalman
+allow_global_memory: true
 memory_guidance: |
   Save: user preferences for how tasks should be reported or summarized, standing routing rules
   (e.g. "always ask before delegating to quartermaster"), and any corrections to agent

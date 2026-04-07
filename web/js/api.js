@@ -62,6 +62,48 @@ class CopperAPI {
     return res.json();
   }
 
+  async subscribeStream(sessionId, { onToken, onDone, onError }) {
+    const res = await fetch(this.baseUrl + `/api/sessions/${sessionId}/stream`, {
+      headers: this._headers(),
+    });
+    if (!res.ok) {
+      onError(`HTTP ${res.status}`);
+      return { cancel: () => {} };
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "", cancelled = false, eventType = "";
+
+    (async () => {
+      try {
+        while (!cancelled) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop();
+          for (const line of lines) {
+            if (line.startsWith("event: ")) {
+              eventType = line.slice(7).trim();
+            } else if (line.startsWith("data: ")) {
+              try {
+                const d = JSON.parse(line.slice(6));
+                if (eventType === "token") onToken(d.t);
+                else if (eventType === "done") { onDone(d.content); return; }
+                else if (eventType === "error") { onError(d.error); return; }
+              } catch { /* skip malformed */ }
+            }
+          }
+        }
+      } catch (e) {
+        if (!cancelled) onError(e.message);
+      }
+    })();
+
+    return { cancel: () => { cancelled = true; reader.cancel(); } };
+  }
+
   async sendMessage(sessionId, content, { onToken, onDone, onError, onTasks, onNotifications }) {
     const res = await fetch(this.baseUrl + `/api/sessions/${sessionId}/messages`, {
       method: "POST",

@@ -25,15 +25,12 @@ def web_search(
         })
 
     max_results = min(max_results, 10)
-    results = []
     try:
         with DDGS() as ddgs:
-            for r in ddgs.text(query, max_results=max_results):
-                results.append({
-                    "title": r.get("title", ""),
-                    "url": r.get("href", ""),
-                    "snippet": r.get("body", ""),
-                })
+            results = [
+                {"title": r.get("title", ""), "url": r.get("href", ""), "snippet": r.get("body", "")}
+                for r in ddgs.text(query, max_results=max_results)
+            ]
     except Exception as e:
         return json.dumps({"error": f"{type(e).__name__}: {e}"})
 

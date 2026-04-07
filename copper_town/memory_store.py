@@ -7,9 +7,7 @@ from pathlib import Path
 
 import aiosqlite
 
-from .utils import parse_bullet_entries  # noqa: F401 — re-exported for callers
-
-__all__ = ["MemoryStore", "MemoryEntry", "parse_bullet_entries"]
+__all__ = ["MemoryStore", "MemoryEntry"]
 
 
 @dataclass
@@ -47,37 +45,22 @@ class MemoryStore:
                 content TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 session_id TEXT,
-                active INTEGER NOT NULL DEFAULT 1
+                active INTEGER NOT NULL DEFAULT 1,
+                pinned INTEGER NOT NULL DEFAULT 0
             )
         """)
         await self._db.execute("""
             CREATE INDEX IF NOT EXISTS idx_memories_agent_scope
             ON memories(agent_slug, scope, active)
         """)
-        # Non-destructive migration: add pinned column if missing
+        # Non-destructive migration: add pinned column if missing from older databases
         try:
             await self._db.execute(
                 "ALTER TABLE memories ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"
             )
-            await self._db.commit()
         except Exception as e:
             if "duplicate column name" not in str(e):
                 raise
-        await self._db.commit()
-
-        # Non-destructive migration: rename agent slugs to nautical theme
-        _slug_migrations = {
-            "mini-me": "captain",
-            "accounting": "purser",
-            "google-workspace": "quartermaster",
-            "web-search": "navigator",
-            "browser": "helmsman",
-        }
-        for old_slug, new_slug in _slug_migrations.items():
-            await self._db.execute(
-                "UPDATE memories SET agent_slug = ? WHERE agent_slug = ?",
-                (new_slug, old_slug),
-            )
         await self._db.commit()
 
     @property

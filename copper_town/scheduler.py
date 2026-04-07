@@ -18,10 +18,11 @@ from .config import (
     TRIGGERS_CONFIG_PATH,
 )
 from .events import Event, EventType
-from .polling import PollChecker, get_checker
+from .polling import get_checker
 
 if TYPE_CHECKING:
     from .engine import Engine
+    from .polling import PollChecker
 
 logger = logging.getLogger("copper_town.scheduler")
 
@@ -80,14 +81,9 @@ class Scheduler:
             logger.info("No triggers config at %s — nothing to schedule", self._config_path)
             return
 
-        with open(self._config_path, encoding="utf-8") as f:
-            raw = yaml.safe_load(f) or {}
+        raw = yaml.safe_load(self._config_path.read_text(encoding="utf-8")) or {}
 
-        triggers_raw = raw.get("triggers") or {}
-        if not triggers_raw:
-            return
-
-        for name, cfg in triggers_raw.items():
+        for name, cfg in (raw.get("triggers") or {}).items():
             if not isinstance(cfg, dict):
                 logger.warning("Skipping malformed trigger %r", name)
                 continue
@@ -123,12 +119,13 @@ class Scheduler:
                 logger.warning("Poll trigger %r missing checker — skipping", name)
                 continue
 
-            if trig.enabled:
-                self._triggers[name] = trig
-                self._state[name] = TriggerState()
-                logger.info("Loaded trigger: %s (%s)", name, ttype)
-            else:
+            if not trig.enabled:
                 logger.info("Trigger %s is disabled — skipping", name)
+                continue
+
+            self._triggers[name] = trig
+            self._state[name] = TriggerState()
+            logger.info("Loaded trigger: %s (%s)", name, ttype)
 
     # ── Poll checker lifecycle ────────────────────────────────────────
 
@@ -164,15 +161,8 @@ class Scheduler:
     def _is_cron_due(self, trig: TriggerDef, state: TriggerState) -> bool:
         assert trig.schedule is not None
         now = time.time()
-        cron = croniter(trig.schedule, now)
-        prev_fire = cron.get_prev(float)
-        # Fire if the most recent scheduled time is within 2x tick interval
-        # and we haven't fired since that scheduled time
-        window = SCHEDULER_TICK_INTERVAL * 2
-        if (now - prev_fire) <= window:
-            if state.last_fired == 0 or state.last_fired < prev_fire:
-                return True
-        return False
+        prev_fire = croniter(trig.schedule, now).get_prev(float)
+        return (now - prev_fire) <= SCHEDULER_TICK_INTERVAL * 2 and state.last_fired < prev_fire
 
     def _is_poll_due(self, trig: TriggerDef, state: TriggerState) -> bool:
         now = time.monotonic()
@@ -188,7 +178,7 @@ class Scheduler:
         state.last_fired = time.time()
 
         task_text = trig.task
-        if poll_result and "${poll_result}" in task_text:
+        if poll_result:
             task_text = task_text.replace("${poll_result}", poll_result)
 
         await self._emit(
@@ -220,31 +210,32 @@ class Scheduler:
 
     # ── Tick ──────────────────────────────────────────────────────────
 
+    async def _check_poll(self, trig: TriggerDef, state: TriggerState) -> str | None:
+        if not self._is_poll_due(trig, state):
+            return None
+        state.last_checked = time.monotonic()
+        if not state.checker_instance:
+            return None
+        try:
+            return await state.checker_instance.check(**trig.checker_args)
+        except Exception:
+            logger.exception("Checker %r raised during check", trig.checker)
+            return None
+
     async def _tick(self) -> None:
         for name, trig in list(self._triggers.items()):
             state = self._state[name]
             if state.running:
                 continue
 
-            if trig.type == "cron":
-                if self._is_cron_due(trig, state):
-                    self._spawn(self._fire_trigger(trig, state), name)
-
+            if trig.type == "cron" and self._is_cron_due(trig, state):
+                self._spawn(self._fire_trigger(trig, state), name)
             elif trig.type == "poll":
-                if self._is_poll_due(trig, state):
-                    state.last_checked = time.monotonic()
-                    checker = state.checker_instance
-                    if checker:
-                        try:
-                            poll_result = await checker.check(**trig.checker_args)
-                        except Exception:
-                            logger.exception("Checker %r raised during check", trig.checker)
-                            poll_result = None
-                        if poll_result:
-                            self._spawn(
-                                self._fire_trigger(trig, state, poll_result=poll_result),
-                                name,
-                            )
+                if poll_result := await self._check_poll(trig, state):
+                    self._spawn(
+                        self._fire_trigger(trig, state, poll_result=poll_result),
+                        name,
+                    )
 
     def _spawn(self, coro: Any, trigger_name: str) -> None:
         task = asyncio.create_task(coro, name=f"trigger-{trigger_name}")
@@ -286,10 +277,8 @@ class Scheduler:
     # ── Introspection ─────────────────────────────────────────────────
 
     def list_triggers(self) -> list[dict[str, Any]]:
-        result = []
-        for name, trig in self._triggers.items():
-            state = self._state[name]
-            result.append({
+        return [
+            {
                 "name": name,
                 "type": trig.type,
                 "agent": trig.agent,
@@ -297,8 +286,9 @@ class Scheduler:
                 "schedule": trig.schedule,
                 "checker": trig.checker,
                 "interval": trig.interval,
-                "fire_count": state.fire_count,
-                "running": state.running,
+                "fire_count": self._state[name].fire_count,
+                "running": self._state[name].running,
                 "enabled": trig.enabled,
-            })
-        return result
+            }
+            for name, trig in self._triggers.items()
+        ]

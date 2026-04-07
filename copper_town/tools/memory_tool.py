@@ -5,7 +5,7 @@ from __future__ import annotations
 from . import tool
 
 
-@tool
+@tool(schema_only=True)
 def remember(content: str, scope: str = "agent", pin: bool = False) -> str:
     """Save a fact or observation to persistent memory for future sessions.
 
@@ -13,4 +13,4 @@ def remember(content: str, scope: str = "agent", pin: bool = False) -> str:
     - scope: "agent" to save to the current agent's memory, or "global" for shared memory.
     - pin: Set True to pin this memory so it is never evicted by compression (use for critical IDs, standing preferences).
     """
-    raise NotImplementedError("This tool is intercepted by the engine")
+    ...
