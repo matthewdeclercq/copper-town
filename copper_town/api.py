@@ -18,7 +18,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from .config import API_KEY
 from .engine import _bg_messages_ctx, _bg_push_ctx, _bg_lock_ctx
-from .sessions import SessionManager
+from .sessions import Session, SessionManager
 
 if TYPE_CHECKING:
     from .engine import Engine
@@ -50,6 +50,16 @@ class APIKeyMiddleware:
             return
 
         await self.app(scope, receive, send)
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────
+
+def _require_session(sm: SessionManager, session_id: str) -> Session | Response:
+    """Return the session or a 404 JSONResponse if not found."""
+    session = sm.get(session_id)
+    if not session:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+    return session
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────
@@ -94,9 +104,9 @@ async def delete_session(request: Request) -> Response:
     sm: SessionManager = request.app.state.sessions
     session_id = request.path_params["session_id"]
 
-    session = sm.get(session_id)
-    if not session:
-        return JSONResponse({"error": "Session not found"}, status_code=404)
+    session = _require_session(sm, session_id)
+    if isinstance(session, Response):
+        return session
 
     # Acquire lock to wait for any active stream to finish, then remove
     async with session.lock:
@@ -120,9 +130,9 @@ async def send_message(request: Request) -> Response:
     sm: SessionManager = request.app.state.sessions
     session_id = request.path_params["session_id"]
 
-    session = sm.get(session_id)
-    if not session:
-        return JSONResponse({"error": "Session not found"}, status_code=404)
+    session = _require_session(sm, session_id)
+    if isinstance(session, Response):
+        return session
 
     try:
         body = await request.json()
@@ -209,9 +219,9 @@ async def get_messages(request: Request) -> Response:
     sm: SessionManager = request.app.state.sessions
     session_id = request.path_params["session_id"]
 
-    session = sm.get(session_id)
-    if not session:
-        return JSONResponse({"error": "Session not found"}, status_code=404)
+    session = _require_session(sm, session_id)
+    if isinstance(session, Response):
+        return session
 
     messages = [
         {"role": m["role"], "content": m.get("content", "")}
@@ -224,9 +234,9 @@ async def get_messages(request: Request) -> Response:
 async def session_stream(request: Request) -> Response:
     """Persistent SSE stream for auto-respond events from background task completions."""
     sm: SessionManager = request.app.state.sessions
-    session = sm.get(request.path_params["session_id"])
-    if not session:
-        return JSONResponse({"error": "Session not found"}, status_code=404)
+    session = _require_session(sm, request.path_params["session_id"])
+    if isinstance(session, Response):
+        return session
 
     async def event_gen():
         try:

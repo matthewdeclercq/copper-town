@@ -121,6 +121,12 @@ class AgentDefinition:
     allow_global_memory: bool = False
 
 
+# Pre-compiled patterns for _sanitize_memory — called on every system prompt build
+_RE_SEPARATOR   = re.compile(r"^-{3,}\s*$")
+_RE_HEADING     = re.compile(r"^(#{1,6}\s)")
+_RE_BLANK_LINES = re.compile(r"\n{3,}")
+
+
 class Engine:
     """LiteLLM-powered async agent engine with tool calling, delegation, and memory."""
 
@@ -218,13 +224,13 @@ class Engine:
         lines = text.splitlines()
         sanitized = []
         for line in lines:
-            if re.match(r"^-{3,}\s*$", line):
+            if _RE_SEPARATOR.match(line):
                 continue  # drop bare separator lines
-            line = re.sub(r"^(#{1,6}\s)", r"[\1", line)
+            line = _RE_HEADING.sub(r"[\1", line)
             if line.startswith("[#"):
                 line = line + "]"
             sanitized.append(line)
-        result = re.sub(r"\n{3,}", "\n\n", "\n".join(sanitized))
+        result = _RE_BLANK_LINES.sub("\n\n", "\n".join(sanitized))
         return result
 
     async def _build_system_prompt(self, agent: AgentDefinition) -> str:
@@ -280,26 +286,19 @@ class Engine:
         self, agent: AgentDefinition, depth: int, mcp_servers: list[str] | None = None,
     ) -> list[dict]:
         """Collect tool schemas for the agent."""
-        tool_names = list(agent.tools)
-
-        # Always-on tools
-        for t in ("remember", "search_skills", "load_skill"):
-            if t not in tool_names:
-                tool_names.append(t)
+        tool_names: set[str] = set(agent.tools) | {"remember", "search_skills", "load_skill"}
 
         # Delegation tools if allowed and not at max depth
-        include_delegation = agent.delegates_to and depth < MAX_DELEGATION_DEPTH
-        if include_delegation and "delegate_background" not in tool_names:
-            tool_names.append("delegate_background")
-        if not include_delegation and "delegate_background" in tool_names:
-            tool_names.remove("delegate_background")
-        if "delegate_background" in tool_names and "cancel_background_task" not in tool_names:
-            tool_names.append("cancel_background_task")
-        # Opt-in sync delegation: strip if agent declared it but delegation is not allowed
-        if not include_delegation and "delegate_to_agent" in tool_names:
-            tool_names.remove("delegate_to_agent")
+        include_delegation = bool(agent.delegates_to) and depth < MAX_DELEGATION_DEPTH
+        if include_delegation:
+            tool_names.update({"delegate_background", "cancel_background_task"})
+        else:
+            tool_names.discard("delegate_background")
+            tool_names.discard("cancel_background_task")
+            # Opt-in sync delegation: strip if declared but delegation is not allowed
+            tool_names.discard("delegate_to_agent")
 
-        schemas = self.registry.get_schemas(tool_names)
+        schemas = self.registry.get_schemas(list(tool_names))
 
         # Append MCP schemas; MCP wins on name collisions with @tool functions
         if mcp_servers is None:
@@ -419,10 +418,10 @@ class Engine:
                 if stop.is_set():
                     break
                 with self._delegation_display_lock:
-                    active = dict(self._active_delegations)
-                if active:
+                    items = list(self._active_delegations.items())
+                if items:
                     parts = []
-                    for slug, count in active.items():
+                    for slug, count in items:
                         name = self.agents[slug].name if slug in self.agents else slug
                         parts.append(name if count == 1 else f"{name} ×{count}")
                     display = f"{message} → " + ", ".join(parts)

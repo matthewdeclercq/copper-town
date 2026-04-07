@@ -9,6 +9,14 @@ import aiosqlite
 
 __all__ = ["MemoryStore", "MemoryEntry"]
 
+_DEDUP_INSERT_SQL = (
+    "INSERT INTO memories (agent_slug, scope, content, session_id, pinned) "
+    "SELECT ?, ?, ?, ?, ? "
+    "WHERE NOT EXISTS ("
+    "  SELECT 1 FROM memories WHERE agent_slug=? AND scope=? AND content=? AND active=1"
+    ")"
+)
+
 
 @dataclass
 class MemoryEntry:
@@ -85,11 +93,7 @@ class MemoryStore:
         """Insert a memory entry, skipping exact duplicates. Returns row id or None if duplicate."""
         # Atomic dedup: INSERT only if no matching active entry exists
         cursor = await self._conn.execute(
-            "INSERT INTO memories (agent_slug, scope, content, session_id, pinned) "
-            "SELECT ?, ?, ?, ?, ? "
-            "WHERE NOT EXISTS ("
-            "  SELECT 1 FROM memories WHERE agent_slug=? AND scope=? AND content=? AND active=1"
-            ")",
+            _DEDUP_INSERT_SQL,
             (agent_slug, scope, content, session_id, 1 if pin else 0,
              agent_slug, scope, content),
         )
@@ -185,12 +189,8 @@ class MemoryStore:
     ) -> None:
         """Insert multiple memory entries, skipping exact duplicates."""
         await self._conn.executemany(
-            "INSERT INTO memories (agent_slug, scope, content, session_id, pinned) "
-            "SELECT ?, ?, ?, ?, 0 "
-            "WHERE NOT EXISTS ("
-            "  SELECT 1 FROM memories WHERE agent_slug=? AND scope=? AND content=? AND active=1"
-            ")",
-            [(agent_slug, scope, content, session_id,
+            _DEDUP_INSERT_SQL,
+            [(agent_slug, scope, content, session_id, 0,
               agent_slug, scope, content) for content in entries],
         )
         await self._conn.commit()

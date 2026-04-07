@@ -159,7 +159,8 @@ class Scheduler:
     # ── Due-checking ──────────────────────────────────────────────────
 
     def _is_cron_due(self, trig: TriggerDef, state: TriggerState) -> bool:
-        assert trig.schedule is not None
+        if not trig.schedule:
+            raise ValueError(f"Cron trigger {trig.name!r} has no schedule — this should have been caught at load time")
         now = time.time()
         prev_fire = croniter(trig.schedule, now).get_prev(float)
         return (now - prev_fire) <= SCHEDULER_TICK_INTERVAL * 2 and state.last_fired < prev_fire

@@ -19,7 +19,7 @@ def _python_type_to_json_schema(t: type) -> dict:
 
     # Optional[X] / Union[X, None]
     if origin is typing.Union and type(None) in args:
-        inner = [a for a in args if a is not type(None)][0]
+        inner = next(a for a in args if a is not type(None))
         return _python_type_to_json_schema(inner)
     if origin is list:
         item_type = _python_type_to_json_schema(args[0]) if args else {"type": "string"}

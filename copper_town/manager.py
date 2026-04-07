@@ -41,6 +41,9 @@ class AgentRun:
     _task: asyncio.Task[None] | None = field(default=None, repr=False)
 
 
+_MAX_COMPLETED_RUNS = 200
+
+
 class AgentManager:
     """Supervisor for concurrent agent runs with tracking, cancellation, and timeout."""
 
@@ -140,6 +143,17 @@ class AgentManager:
                 agent_slug=run.agent_slug,
                 task=run.task,
             )
+        finally:
+            self._prune_runs()
+
+    def _prune_runs(self) -> None:
+        """Evict oldest completed runs to keep _runs from growing unbounded."""
+        done = [r for r in self._runs.values()
+                if r.status not in (RunStatus.PENDING, RunStatus.RUNNING)]
+        if len(done) > _MAX_COMPLETED_RUNS:
+            to_evict = sorted(done, key=lambda r: r.completed_at or datetime.min)
+            for r in to_evict[:len(done) - _MAX_COMPLETED_RUNS]:
+                del self._runs[r.id]
 
     async def cancel(self, run_id: str) -> bool:
         """Cancel a running task. Returns True if cancelled."""

@@ -90,6 +90,8 @@ class MCPClientManager:
                 try:
                     if transport == "stdio":
                         command: list[str] = cfg["command"]
+                        if not command:
+                            raise ValueError(f"MCP server has an empty command list in mcp.yml")
                         raw_env = cfg.get("env", {})
                         env = {k: interpolate_env(str(v), fallback_original=False) for k, v in raw_env.items()}
                         params = StdioServerParameters(
