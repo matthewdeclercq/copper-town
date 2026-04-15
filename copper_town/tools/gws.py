@@ -13,7 +13,7 @@ from ..utils import resolve_safe_path
 # Allow lowercase alphanumeric, hyphens, and + for subcommands.
 # Each token must start with an alphanumeric or + (prevents --flag injection).
 # Matches: "drive files list", "admin-reports activities list", "workflow +standup-report"
-_COMMAND_RE = re.compile(r"^[a-z0-9+][a-z0-9+\-]*(\s[a-z0-9+][a-z0-9+\-]*)*$")
+_COMMAND_RE = re.compile(r"^[a-zA-Z0-9+][a-zA-Z0-9+\-]*(\s[a-zA-Z0-9+][a-zA-Z0-9+\-]*)*$")
 _gws_lock = threading.Lock()
 _AUTH_KEYWORDS = frozenset({"keyring", "auth", "credential", "token"})
 
@@ -58,8 +58,8 @@ def gws(
     if not _COMMAND_RE.match(command):
         return json.dumps({
             "error": (
-                "Invalid command format. Use only lowercase letters, digits, hyphens, "
-                "+ and spaces (e.g. 'drive files list', 'admin-reports activities list', "
+                "Invalid command format. Use only letters, digits, hyphens, "
+                "+ and spaces (e.g. 'drive files list', 'docs documents batchUpdate', "
                 "'workflow +standup-report'). Flags must not be included in the command."
             )
         })

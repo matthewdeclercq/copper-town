@@ -24,17 +24,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 │   ├── models.py              # AgentResult, AgentStatus, AgentRun
 │   ├── tracer.py              # JSONL trace writer
 │   ├── utils.py               # parse_markdown_frontmatter, interpolate_env
-│   └── tools/                 # @tool-decorated Python modules
-│       ├── __init__.py        # @tool decorator + ToolRegistry
-│       ├── builtin.py         # read_file, list_files
-│       ├── delegation.py      # delegate_to_agent, delegate_background, cancel_background_task (schemas only)
-│       ├── gws.py             # gws CLI wrapper
-│       ├── memory_tool.py     # remember (schema only)
-│       ├── regen_gws_skills.py # regen-gws-skills subcommand
-│       ├── skills.py          # search_skills, load_skill
-│       ├── sandbox.py         # write_file, run_shell (Docker-isolated; boatswain only)
-│       ├── web_search.py      # web_search (ddgs/DuckDuckGo; navigator agent only)
-│       └── write_skill.py     # write_skill
+│   ├── tools/                 # @tool-decorated Python modules
+│   │   ├── __init__.py        # @tool decorator + ToolRegistry
+│   │   ├── builtin.py         # read_file, list_files
+│   │   ├── delegation.py      # delegate_to_agent, delegate_background, cancel_background_task (schemas only)
+│   │   ├── gws.py             # gws CLI wrapper
+│   │   ├── memory_tool.py     # remember (schema only)
+│   │   ├── regen_gws_skills.py # regen-gws-skills subcommand
+│   │   ├── skills.py          # search_skills, load_skill
+│   │   ├── sandbox.py         # write_file, run_shell (Docker-isolated; boatswain only)
+│   │   ├── web_search.py      # web_search (ddgs/DuckDuckGo; navigator agent only)
+│   │   └── write_skill.py     # write_skill
 │   ├── sessions.py        # Session + SessionManager for HTTP API
 │   ├── api.py             # Starlette app, endpoints, auth middleware
 │   ├── polling.py          # PollChecker ABC + registry for trigger checkers
@@ -57,6 +57,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ├── triggers.yml               # Trigger definitions for scheduler daemon
 └── mcp.yml                    # MCP server config (stdio/sse servers)
 ```
+
+## Agent Roster
+
+The crew and their delegation hierarchy:
+
+```
+captain           → first-mate, purser, quartermaster
+first-mate        → purser, quartermaster, navigator, helmsman  (uses sync delegation)
+purser            → quartermaster
+boatswain         → signalman
+signalman         → quartermaster
+navigator         (no delegation — web search only)
+helmsman          (no delegation — Chrome DevTools MCP only)
+quartermaster     (no delegation — gws CLI + write_skill)
+```
+
+| Slug | Name | Role |
+|------|------|------|
+| `captain` | The Captain | Top-level orchestrator; entry point for most tasks |
+| `first-mate` | The First Mate | Multi-step project coordinator; runs as a background task under Captain |
+| `purser` | The Purser | Expense/accounting workflows |
+| `quartermaster` | The Quartermaster | Google Workspace (Drive, Gmail, Calendar, Sheets, Docs…) |
+| `navigator` | The Navigator | Web search and research synthesis |
+| `helmsman` | The Helmsman | Real Chrome browser control via DevTools MCP |
+| `boatswain` | The Boatswain | Code writing and execution in Docker sandbox |
+| `signalman` | The Signalman | Outbound notifications via Gmail (delegates to quartermaster) |
 
 ## Agent Definition Format
 
@@ -114,22 +140,6 @@ System prompt body...
 
 **MCP connectors**: external services are wired in via `mcp.yml` — no new Python code per connector. Each entry names a transport (`stdio` or `sse`) and its connection parameters. Env values in `mcp.yml` support `${VAR}` interpolation. `MCPClientManager` (`copper_town/mcp_registry.py`) connects lazily on first tool call and keeps sessions alive for the process lifetime. MCP tool schemas shadow same-named `@tool` functions, enabling gradual migration of the gws connector. The existing `gws` connector is unchanged.
 
-## Interactive REPL Slash Commands
-
-Available in any interactive session (no LLM round-trip):
-
-| Command | Description |
-|---------|-------------|
-| `/help` | Show all slash commands |
-| `/tasks` | List active background tasks with full descriptions |
-| `/cancel [task_id]` | Cancel a background task (omit `task_id` if only one active) |
-| `/memory` | Show this agent's memory entries |
-| `/agents` | List all loaded agents with slug, name, description, and delegation targets |
-| `/clear` | Reset conversation to system prompt only |
-| `/model [name]` | Show current model or switch to a new one |
-
-All handlers live in `REPLSession` in `repl.py`.
-
 ## Adding a New Tool
 
 Use `@tool` for tools executed directly by the registry. Use `@tool(schema_only=True)` for tools whose execution is handled by the engine before `execute_async` is reached (e.g. `delegate_background`, `remember`) — these register a schema but no callable, so the engine intercepts them by name in `_completion_loop`.
@@ -186,22 +196,6 @@ triggers:
     enabled: true
 ```
 
-## Adding a Poll Checker
-
-1. Create a `PollChecker` subclass (e.g., in `copper_town/tools/` or a new module)
-2. Register it in `copper_town/polling.py`:
-   ```python
-   from copper_town.polling import PollChecker, register_checker
-
-   class MyChecker(PollChecker):
-       async def check(self, **kwargs) -> str | None:
-           # Return a string to fire the trigger, None to skip
-           return None
-
-   register_checker("my-checker", MyChecker)
-   ```
-3. Reference it by name in `triggers.yml` `checker` field
-
 ## HTTP API (`serve` subcommand)
 
 Starts a Starlette app on `API_HOST:API_PORT`. Auth: `X-Api-Key` header if `API_KEY` is set (`/health` is always public).
@@ -218,17 +212,7 @@ Starts a Starlette app on `API_HOST:API_PORT`. Auth: `X-Api-Key` header if `API_
 | `GET` | `/api/sessions/{id}/stream` | Long-lived SSE stream for auto-respond events |
 | `GET` | `/api/tasks` | List active background tasks |
 
-**SSE event types** (from `POST .../messages`):
-- `token` — streaming token chunk `{"t": "..."}`
-- `done` — final response `{"content": "..."}`
-- `error` — failure `{"error": "..."}`
-- `notifications` — completed background task summaries (array of strings)
-- `tasks` — newly launched background tasks `[{"task_id": ..., "name": ...}]`
-
-**SSE event types** (from `GET .../stream` — auto-respond after background task completion):
-- `token` — streaming token chunk `{"t": "..."}`
-- `done` — final response `{"content": "..."}`
-- `error` — failure `{"error": "..."}`
+Both streaming endpoints emit `token`, `done`, and `error` SSE events. `POST .../messages` also emits `notifications` (completed bg task summaries) and `tasks` (newly launched bg tasks). `GET .../stream` is a long-lived connection for auto-respond events after background tasks finish.
 
 Static PWA files from `web/` are mounted at `/` if the directory exists.
 
@@ -274,30 +258,13 @@ There are no automated tests or linting configs in this project.
 --parallel "agent1:task1" "agent2:task2"  # run multiple agents concurrently
 ```
 
-**Environment variables** (set in `.env` or shell; see `.env.example`):
+**Environment variables** (set in `.env` or shell; see `.env.example` for full list):
 - `MODEL` — LiteLLM model string, e.g. `xai/grok-4-latest`, `anthropic/claude-sonnet-4-20250514` (default: `xai/grok-4-latest`)
 - `XAI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / etc. — provider key for the chosen model
 - `ALLOWED_READ_DIRS` — colon-separated dirs agents may read (default: project root only)
-- `LOG_LEVEL` — Python logging level (default: `WARNING`)
 - `CONTEXT_SUMMARIZE` — `true`/`false`; summarize evicted context instead of dropping (default: `true`)
 - `MEMORY_COMPRESS_ENABLED` — set to `false` if memory contains sensitive data you don't want sent to the LLM
-- `MEMORY_MAX_LINES` — row count threshold that triggers LLM memory compression (default: `30`)
-- `MEMORY_MIN_MESSAGES` — minimum conversation messages before end-of-session memory extraction runs (default: `12`)
-- `MEMORY_WRITE_MAX_CHARS` — max chars accepted per `remember()` call (default: `2000`)
-- `MAX_PARALLEL_TOOLS` — max concurrent tool calls per LLM response (default: `4`)
-- `MAX_TOOL_OUTPUT_CHARS` — tool output truncation limit (default: `10000`)
-- `MAX_SYSTEM_PROMPT_CHARS` — system prompt truncation limit (default: `50000`)
-- `MAX_MEMORY_PROMPT_CHARS` — per-scope memory injection limit in system prompt (default: `4000`)
-- `CONSUMED_TOOL_MAX_CHARS` — max chars kept for tool results older than last assistant message (default: `500`)
-- `DELEGATION_RETRY_COUNT` — times to retry a failed delegation (default: `1`)
-- `MAX_CONCURRENT_AGENTS` — max agents running in parallel via AgentManager (default: `10`)
-- `AGENT_DEFAULT_TIMEOUT` — timeout for parallel agent runs in seconds (default: `300.0`)
-- `SCHEDULER_TICK_INTERVAL` — seconds between scheduler ticks (default: `30.0`)
-- `TRIGGER_DEFAULT_TIMEOUT` — default timeout for trigger-fired tasks in seconds (default: `300.0`)
-- `API_HOST` — bind address for HTTP API (default: `0.0.0.0`)
 - `API_PORT` — port for HTTP API (default: `8420`)
 - `API_KEY` — API key for authenticating `/api/*` requests (empty = no auth)
-- `SESSION_TTL_SECONDS` — session expiry in seconds (default: `7200`)
-- `MAX_CONCURRENT_SESSIONS` — max simultaneous chat sessions (default: `20`)
 - `BOATSWAIN_SANDBOX_DIR` — directory where boatswain writes files and runs commands (default: `sandbox/` inside project root)
 - `BOATSWAIN_DOCKER_IMAGE` — Docker image for `run_shell` execution (default: `python:3.12-slim`); must have `sh` available

@@ -113,17 +113,17 @@ class REPLSession:
         return agents[slug].name if slug in agents else slug
 
     @staticmethod
-    def _print_agent_tree(names: list[str], verb: str, detail: str | None = None) -> None:
+    def _print_agent_tree(names: list[str], verb: str, detail: str | None = None, indent: str = "") -> None:
         n = len(names)
         label = "agent" if n == 1 else "agents"
-        print(f"\n{BOLD}{GREEN}● {n} {label} {verb}{RESET}")
+        print(f"\n{indent}{BOLD}{GREEN}● {n} {label} {verb}{RESET}")
         for i, name in enumerate(names):
             is_last = i == n - 1
             connector = "└──" if is_last else "├──"
-            print(f"{connector} {BOLD}{name}{RESET}")
+            print(f"{indent}{connector} {BOLD}{name}{RESET}")
             if detail:
                 sub_indent = "    " if is_last else "│   "
-                print(f"{sub_indent}{DIM}└ {detail}{RESET}")
+                print(f"{indent}{sub_indent}{DIM}└ {detail}{RESET}")
         print()
 
     def _print_task_tree(self, new_ids: list[str]) -> None:
@@ -186,7 +186,33 @@ class REPLSession:
             if event.source == agent.slug:
                 _sync_agents.append(self._agent_display_name(event.data.get("target", "?")))
 
+        _sub_del_buf: dict[str, list[str]] = {}
+        _sub_del_verb: dict[str, str] = {}
+        _sub_del_timers: dict[str, asyncio.Task] = {}
+
+        async def _flush_sub_del(source_slug: str) -> None:
+            await asyncio.sleep(0.1)
+            targets = _sub_del_buf.pop(source_slug, [])
+            verb = _sub_del_verb.pop(source_slug, "used")
+            _sub_del_timers.pop(source_slug, None)
+            if targets:
+                with _pt_patch_stdout(raw=True):
+                    self._print_agent_tree(targets, verb, indent="    ")
+
+        async def _on_sub_delegation(event: Event) -> None:
+            if event.source != agent.slug:
+                source = event.source
+                target_name = self._agent_display_name(event.data.get("target", "?"))
+                _sub_del_buf.setdefault(source, []).append(target_name)
+                _sub_del_verb[source] = "launched" if event.type == EventType.TASK_BACKGROUND_STARTED else "used"
+                pending = _sub_del_timers.pop(source, None)
+                if pending:
+                    pending.cancel()
+                _sub_del_timers[source] = asyncio.create_task(_flush_sub_del(source))
+
         engine.event_bus.subscribe(EventType.TASK_DELEGATED, _on_task_delegated)
+        engine.event_bus.subscribe(EventType.TASK_DELEGATED, _on_sub_delegation)
+        engine.event_bus.subscribe(EventType.TASK_BACKGROUND_STARTED, _on_sub_delegation)
 
         from prompt_toolkit.patch_stdout import patch_stdout as _pt_patch_stdout
         from prompt_toolkit.application import get_app_or_none as _get_app_or_none
@@ -301,6 +327,10 @@ class REPLSession:
         finally:
             engine._bg.on_notification = None
             engine.event_bus.unsubscribe(EventType.TASK_DELEGATED, _on_task_delegated)
+            engine.event_bus.unsubscribe(EventType.TASK_DELEGATED, _on_sub_delegation)
+            engine.event_bus.unsubscribe(EventType.TASK_BACKGROUND_STARTED, _on_sub_delegation)
+            for t in _sub_del_timers.values():
+                t.cancel()
             if engine._bg.has_tasks:
                 remaining = engine._bg.all_tasks()
                 for bg_task in remaining:
