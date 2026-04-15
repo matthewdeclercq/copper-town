@@ -1,9 +1,9 @@
 ---
-_upstream_sha: 3b8a37702dd94e68ac6692b880b177c83efed252
+_upstream_sha: 4078e1597935a0b55ba8596c609277fa9cfa66a6
 cli_help: gws workflow --help
 description: 'Google Workflow: Cross-service productivity workflows.'
 name: gws-workflow
-version: 0.22.3
+version: 0.22.5
 ---
 
 # workflow (v1)

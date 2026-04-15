@@ -1,9 +1,9 @@
 ---
-_upstream_sha: 6a127c114ea6e6881663a420877c95d0804b4117
+_upstream_sha: bb825ed7a9d8a75013fe8f3fdd9f9924e6d7a128
 cli_help: gws events +renew --help
 description: 'Google Workspace Events: Renew/reactivate Workspace Events subscriptions.'
 name: gws-events-renew
-version: 0.22.3
+version: 0.22.5
 ---
 
 # events +renew

@@ -1,9 +1,9 @@
 ---
-_upstream_sha: caff62051869ba8d26bd39d02150f7c43b41088f
+_upstream_sha: fca780f7e80a0ce814040861e2c40aeb3d4dd0da
 cli_help: gws gmail +watch --help
 description: 'Gmail: Watch for new emails and stream them as NDJSON.'
 name: gws-gmail-watch
-version: 0.22.3
+version: 0.22.5
 ---
 
 # gmail +watch

@@ -1,9 +1,9 @@
 ---
-_upstream_sha: 2786311096db257753d39e5b2cf472960945a3cc
+_upstream_sha: 5eaca50c31af372a445d0322948078d2224949f5
 cli_help: gws chat --help
 description: 'Google Chat: Manage Chat spaces and messages.'
 name: gws-chat
-version: 0.22.3
+version: 0.22.5
 ---
 
 # chat (v1)

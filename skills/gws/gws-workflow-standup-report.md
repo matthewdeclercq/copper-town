@@ -1,9 +1,9 @@
 ---
-_upstream_sha: a91cea42dd3b5952c2cb2174a7f08efb625e26ff
+_upstream_sha: 9b1a8c914b714f4de47b6844dda85539ac033fcd
 cli_help: gws workflow +standup-report --help
 description: 'Google Workflow: Today''s meetings + open tasks as a standup summary.'
 name: gws-workflow-standup-report
-version: 0.22.3
+version: 0.22.5
 ---
 
 # workflow +standup-report

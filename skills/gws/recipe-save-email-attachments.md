@@ -1,9 +1,9 @@
 ---
-_upstream_sha: acaaee34e67982cc044638f9bccf06c2da10ec51
+_upstream_sha: 2ea287eef6bc0cc8ac15bdfa71b986ceb6c35952
 description: Find Gmail messages with attachments and save them to a Google Drive
   folder.
 name: recipe-save-email-attachments
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Save Gmail Attachments to Google Drive

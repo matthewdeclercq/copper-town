@@ -1,9 +1,9 @@
 ---
-_upstream_sha: 3b26dddf27505c4e5af3a8d79a93d2c36a8597d7
+_upstream_sha: c3920af2bf670bbe4207bf3a6b19c3fdcc5af2f8
 cli_help: gws script +push --help
 description: 'Google Apps Script: Upload local files to an Apps Script project.'
 name: gws-script-push
-version: 0.22.3
+version: 0.22.5
 ---
 
 # script +push

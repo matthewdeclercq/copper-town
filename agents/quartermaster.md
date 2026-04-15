@@ -7,6 +7,7 @@ tools:
   - list_files
   - write_skill
 memory_guidance: |
+  Always call remember with scope='agent'. You are not permitted to write global memory.
   Save: IDs or paths for frequently accessed files, folders, spreadsheets, or calendars;
   the user's preferred Drive folder structure; standing label/filter rules for Gmail;
   contact emails the user references repeatedly; and any service-specific preferences

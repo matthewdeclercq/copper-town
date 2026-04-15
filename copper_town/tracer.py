@@ -155,7 +155,8 @@ def format_trace(path: Path, records: list[dict]) -> None:
             depth_sfx = f"  depth={depth}" if depth else ""
             print(f"{prefix}STARTED  \"{(data.get('task') or '')[:55]}\"{depth_sfx}")
         elif etype == "agent_completed":
-            print(f"{prefix}DONE     status={data.get('status', '?')}")
+            result_sfx = f"  result=\"{data['result_preview'][:80]}\"" if data.get("result_preview") else ""
+            print(f"{prefix}DONE     status={data.get('status', '?')}{result_sfx}")
         elif etype == "agent_failed":
             err = (data.get("error") or data.get("status", "?"))[:50]
             print(f"{prefix}FAILED   error={err}")

@@ -1,9 +1,9 @@
 ---
-_upstream_sha: 0f4cc94cd7f938c9252f5b905cfa4221576a6be6
+_upstream_sha: f51b195031ea0b0d1b26cb548b1c5c1cdb82166f
 cli_help: gws docs --help
 description: Read and write Google Docs.
 name: gws-docs
-version: 0.22.3
+version: 0.22.5
 ---
 
 # docs (v1)

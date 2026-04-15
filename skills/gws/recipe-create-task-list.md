@@ -1,8 +1,8 @@
 ---
-_upstream_sha: 59aee4f7f66fc2a99f53e0cbb08e37735073a20d
+_upstream_sha: d79a8a0b3e92c588e2dc419895ad1543a9278f01
 description: Set up a new Google Tasks list with initial tasks.
 name: recipe-create-task-list
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Create a Task List and Add Tasks

@@ -1,9 +1,9 @@
 ---
-_upstream_sha: a5c05d862d5f41d3a4c36de79fe6cd470c5e1a67
+_upstream_sha: fe2b4017e3a2865132b89a75792d5f02f3ad2ffc
 cli_help: gws drive +upload --help
 description: 'Google Drive: Upload a file with automatic metadata.'
 name: gws-drive-upload
-version: 0.22.3
+version: 0.22.5
 ---
 
 # drive +upload

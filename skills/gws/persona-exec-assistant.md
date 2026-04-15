@@ -1,8 +1,8 @@
 ---
-_upstream_sha: e8bfc1296759dd3e85e4296392c4d7741562ffe6
+_upstream_sha: 8e0dc8607d241ec5fb6ecb7fa86a2f5e3b8504eb
 description: Manage an executive's schedule, inbox, and communications.
 name: persona-exec-assistant
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Executive Assistant

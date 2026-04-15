@@ -1,8 +1,8 @@
 ---
-_upstream_sha: 4db233334f1385f7f8cc53f13b67afa1abe677f6
+_upstream_sha: 46d3e33abec2d9216c51ac81ec5ef60c419ddfc9
 description: Lead a team — run standups, coordinate tasks, and communicate.
 name: persona-team-lead
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Team Lead

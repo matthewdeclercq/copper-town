@@ -1,9 +1,9 @@
 ---
-_upstream_sha: 9cbd845cedb969bef8c29d1fe794fb3ca89bd540
+_upstream_sha: 88dcfc835562a961e88cd7ed86c35d4811630a87
 description: Create a Google Docs post-mortem, schedule a Google Calendar review,
   and notify via Chat.
 name: recipe-post-mortem-setup
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Set Up Post-Mortem

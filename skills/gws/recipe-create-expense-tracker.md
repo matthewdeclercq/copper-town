@@ -1,9 +1,9 @@
 ---
-_upstream_sha: 4dc60963f841cc389758dbdbd2d8bbed76be25e1
+_upstream_sha: 86edb3c7b34025e949a11eddd8b55525f2199a05
 description: Set up a Google Sheets spreadsheet for tracking expenses with headers
   and initial entries.
 name: recipe-create-expense-tracker
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Create a Google Sheets Expense Tracker

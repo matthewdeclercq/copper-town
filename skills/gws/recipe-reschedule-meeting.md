@@ -1,9 +1,9 @@
 ---
-_upstream_sha: 9b6b727b3ddfad47b7ec489ac9f3e97b217727b6
+_upstream_sha: 83be0954f86fb1c1b9ea9cea0f319d9e34b23225
 description: Move a Google Calendar event to a new time and automatically notify all
   attendees.
 name: recipe-reschedule-meeting
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Reschedule a Google Calendar Meeting

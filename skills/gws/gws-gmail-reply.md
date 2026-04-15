@@ -1,9 +1,9 @@
 ---
-_upstream_sha: 2e56dc48defee16e2acc5e0e6918a3faec729594
+_upstream_sha: e3538827ecd0d81b9d717651bec130176e048ebf
 cli_help: gws gmail +reply --help
 description: 'Gmail: Reply to a message (handles threading automatically).'
 name: gws-gmail-reply
-version: 0.22.3
+version: 0.22.5
 ---
 
 # gmail +reply

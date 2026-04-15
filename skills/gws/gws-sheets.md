@@ -1,9 +1,9 @@
 ---
-_upstream_sha: b006d3faffa9c47cf3af31c13a9edeb74e278741
+_upstream_sha: d713253dbd00de9a8bcaa8859f936f21eb156c41
 cli_help: gws sheets --help
 description: 'Google Sheets: Read and write spreadsheets.'
 name: gws-sheets
-version: 0.22.3
+version: 0.22.5
 ---
 
 # sheets (v4)

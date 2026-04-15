@@ -1,8 +1,8 @@
 ---
-_upstream_sha: 02a6f0e7291efd4ae1a752ac629b781eff2e398b
+_upstream_sha: 261be02af81137db3de3d9ce8d2d42fd3e44c852
 description: List and download all files from a Google Drive folder.
 name: recipe-bulk-download-folder
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Bulk Download Drive Folder

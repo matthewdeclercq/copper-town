@@ -1,8 +1,8 @@
 ---
-_upstream_sha: 153ca330c77cf0cac49fc2e98899771668916d9c
+_upstream_sha: 396ca928fe7abe2831e4a8bb13f142beb96e43f3
 description: Find Google Tasks that are past due and need attention.
 name: recipe-review-overdue-tasks
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Review Overdue Tasks

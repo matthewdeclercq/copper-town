@@ -1,8 +1,8 @@
 ---
-_upstream_sha: 59344a771853db9ed5b39125e14b45a7695a38c6
+_upstream_sha: 7d777cdb32f23f7057049dbe4ecd2246ece622dd
 description: Manage customer support — track tickets, respond, escalate issues.
 name: persona-customer-support
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Customer Support Agent

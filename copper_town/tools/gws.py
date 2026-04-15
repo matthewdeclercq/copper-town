@@ -104,7 +104,13 @@ def gws(
 
     if result.returncode != 0:
         error = result.stderr.strip() or result.stdout.strip()
-        err_lower = error.lower()
+        # Strip the informational "Using keyring backend: ..." line that gws always emits
+        # to stderr — it contains "keyring" but is not an auth error.
+        filtered = "\n".join(
+            ln for ln in error.splitlines()
+            if not ln.lower().startswith("using keyring backend")
+        )
+        err_lower = filtered.lower()
         if any(kw in err_lower for kw in _AUTH_KEYWORDS):
             return json.dumps({
                 "error": "gws authentication failure — credentials could not be read from keyring. "

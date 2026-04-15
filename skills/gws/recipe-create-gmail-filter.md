@@ -1,9 +1,9 @@
 ---
-_upstream_sha: b94c9a82f30af5fd147b9c3d077d3c518d4e728d
+_upstream_sha: 32e8560604e263151c14e35e02b65a43e276be4c
 description: Create a Gmail filter to automatically label, star, or categorize incoming
   messages.
 name: recipe-create-gmail-filter
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Create a Gmail Filter

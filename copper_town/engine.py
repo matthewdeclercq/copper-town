@@ -597,8 +597,8 @@ class Engine:
             data={
                 "agent": agent.slug,
                 "tool": name,
-                "args_preview": tool_call.function.arguments[:120],
-                "result_preview": result[:120],
+                "args_preview": tool_call.function.arguments[:500],
+                "result_preview": result[:500],
                 "latency_ms": round(_tool_latency_ms, 1),
                 "success": _tool_error is None,
                 "error": _tool_error,
@@ -1267,6 +1267,8 @@ class Engine:
 
         event_type = EventType.AGENT_COMPLETED if agent_result.succeeded else EventType.AGENT_FAILED
         event_data: dict = {"status": agent_result.status.value, "task": task}
+        if agent_result.result:
+            event_data["result_preview"] = agent_result.result[:500]
         if agent_result.error:
             event_data["error"] = agent_result.error
         await self.event_bus.publish(Event(

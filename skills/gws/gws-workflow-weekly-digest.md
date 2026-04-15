@@ -1,10 +1,10 @@
 ---
-_upstream_sha: 7413c56d8ec89cf1384adad992e916bc36b9e4f1
+_upstream_sha: f07df867c2f1f4edee1772b572eb787e885979bc
 cli_help: gws workflow +weekly-digest --help
 description: 'Google Workflow: Weekly summary: this week''s meetings + unread email
   count.'
 name: gws-workflow-weekly-digest
-version: 0.22.3
+version: 0.22.5
 ---
 
 # workflow +weekly-digest

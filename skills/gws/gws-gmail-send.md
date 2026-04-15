@@ -1,9 +1,9 @@
 ---
-_upstream_sha: cf2721a3c750bbc67e9d57213fed06e8d8646f6c
+_upstream_sha: 55da9c28cc771c4ad32f67f6ac8799fcde3e48c3
 cli_help: gws gmail +send --help
 description: 'Gmail: Send an email.'
 name: gws-gmail-send
-version: 0.22.3
+version: 0.22.5
 ---
 
 # gmail +send

@@ -1,8 +1,8 @@
 ---
-_upstream_sha: b4632863a0a5259956b36362a9662e147dc8ef54
+_upstream_sha: f9846fc6c4e6180fe47455f5473b29db26c7ec75
 description: Create, organize, and distribute content across Workspace.
 name: persona-content-creator
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Content Creator

@@ -1,9 +1,9 @@
 ---
-_upstream_sha: ee2020b8cbd2361b34af15d7db6680926c98657f
+_upstream_sha: d433cef541855ab42946da2bc65f3f5fd1a7023c
 cli_help: gws gmail +forward --help
 description: 'Gmail: Forward a message to new recipients.'
 name: gws-gmail-forward
-version: 0.22.3
+version: 0.22.5
 ---
 
 # gmail +forward

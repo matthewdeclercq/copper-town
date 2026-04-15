@@ -1,8 +1,8 @@
 ---
-_upstream_sha: f52ce1d8157dc7fb83ab6ce0af59f31152315005
+_upstream_sha: 67f98aa01d296e8f6462bcc47c01b4b052554260
 description: Append a deal status update to a Google Sheets sales tracking spreadsheet.
 name: recipe-log-deal-update
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Log Deal Update to Sheet

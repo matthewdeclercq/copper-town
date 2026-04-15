@@ -1,8 +1,8 @@
 ---
-_upstream_sha: 5b8ff16897efa0ea6ccfce0cab44eef480f1dee3
+_upstream_sha: 5554e31d5eca77f16586f6aba571466b15a6e555
 description: Save a Gmail message body into a Google Doc for archival or reference.
 name: recipe-save-email-to-doc
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Save a Gmail Message to Google Docs

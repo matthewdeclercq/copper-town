@@ -1,9 +1,9 @@
 ---
-_upstream_sha: 1ec1425f3c130231befe7696d7365452c0b3c814
+_upstream_sha: 5162a63de6fc1cc7e8fbc8a7caa6e40045f03049
 description: Find Gmail messages with a specific label and forward them to another
   address.
 name: recipe-forward-labeled-emails
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Forward Labeled Gmail Messages

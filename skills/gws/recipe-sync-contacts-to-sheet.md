@@ -1,8 +1,8 @@
 ---
-_upstream_sha: 9b196e76e6b812c5ca548f6562c980c4ba3da700
+_upstream_sha: d924426b75465e81bfe1e8ea3afd4c19e528cd65
 description: Export Google Contacts directory to a Google Sheets spreadsheet.
 name: recipe-sync-contacts-to-sheet
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Export Google Contacts to Sheets

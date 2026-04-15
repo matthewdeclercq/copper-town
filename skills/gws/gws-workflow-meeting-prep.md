@@ -1,10 +1,10 @@
 ---
-_upstream_sha: 379ea6848d23c986a6a55d515f20e85e76e4d4d0
+_upstream_sha: f0edea82e4c23d7074668fa941f1256e477580df
 cli_help: gws workflow +meeting-prep --help
 description: 'Google Workflow: Prepare for your next meeting: agenda, attendees, and
   linked docs.'
 name: gws-workflow-meeting-prep
-version: 0.22.3
+version: 0.22.5
 ---
 
 # workflow +meeting-prep

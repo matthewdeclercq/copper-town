@@ -1,8 +1,8 @@
 ---
-_upstream_sha: 1078ce88e04d087c678cbeafb97d3984f2e02f9f
+_upstream_sha: bd998538b285f50d6d510b53572c46b6d4648feb
 description: Create a Google Meet meeting space and share the join link.
 name: recipe-create-meet-space
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Create a Google Meet Conference

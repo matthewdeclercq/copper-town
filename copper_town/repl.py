@@ -189,7 +189,7 @@ class REPLSession:
         engine.event_bus.subscribe(EventType.TASK_DELEGATED, _on_task_delegated)
 
         from prompt_toolkit.patch_stdout import patch_stdout as _pt_patch_stdout
-        from prompt_toolkit import get_app_or_none as _get_app_or_none
+        from prompt_toolkit.application import get_app_or_none as _get_app_or_none
 
         _AUTO_RESPOND = "\x00__auto__"
 

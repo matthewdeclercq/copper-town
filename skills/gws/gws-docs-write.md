@@ -1,9 +1,9 @@
 ---
-_upstream_sha: 3292550756a124d15ff9347246900b8ea47d0bcb
+_upstream_sha: 4c903126fa2d9a0e2ba3feb129c8c8f5a6a50fbb
 cli_help: gws docs +write --help
 description: 'Google Docs: Append text to a document.'
 name: gws-docs-write
-version: 0.22.3
+version: 0.22.5
 ---
 
 # docs +write

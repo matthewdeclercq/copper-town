@@ -1,9 +1,9 @@
 ---
-_upstream_sha: 6307c146b3ec2d3c390043a9d880fe472d4b04f4
+_upstream_sha: e7e288aafd0696d46bc7cbbeb1943766512653b8
 cli_help: gws script --help
 description: Manage Google Apps Script projects.
 name: gws-script
-version: 0.22.3
+version: 0.22.5
 ---
 
 # script (v1)

@@ -1,8 +1,8 @@
 ---
-_upstream_sha: f8a1f4e3aa98e5bbf0ce4cc530dd06dd4139770e
+_upstream_sha: b22f75524ae798627c588f31451dd8c4070fa088
 description: Manage sales workflows — track deals, schedule calls, client comms.
 name: persona-sales-ops
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Sales Operations

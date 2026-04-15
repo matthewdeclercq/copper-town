@@ -1,9 +1,9 @@
 ---
-_upstream_sha: 9d5684c8fc27e940c0741cf69b84b45d8133d238
+_upstream_sha: 1a4e4c8b936e5f150c67a5b0f7c7e115f6f8e674
 cli_help: gws gmail +reply-all --help
 description: 'Gmail: Reply-all to a message (handles threading automatically).'
 name: gws-gmail-reply-all
-version: 0.22.3
+version: 0.22.5
 ---
 
 # gmail +reply-all

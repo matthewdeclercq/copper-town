@@ -1,9 +1,9 @@
 ---
-_upstream_sha: 2a697549dc43494ea114533dd1a55c5cde120e17
+_upstream_sha: da4b44d118cee06c9d7f1bb679327b7248dabc1c
 cli_help: gws tasks --help
 description: 'Google Tasks: Manage task lists and tasks.'
 name: gws-tasks
-version: 0.22.3
+version: 0.22.5
 ---
 
 # tasks (v1)

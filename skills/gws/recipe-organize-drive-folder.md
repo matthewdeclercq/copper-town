@@ -1,9 +1,9 @@
 ---
-_upstream_sha: d522b268a7850bbffd546cb6d993d8a9f99dab96
+_upstream_sha: ac74d1db5117f03cd80899cb82dcedddd294c365
 description: Create a Google Drive folder structure and move files into the right
   locations.
 name: recipe-organize-drive-folder
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Organize Files into Google Drive Folders

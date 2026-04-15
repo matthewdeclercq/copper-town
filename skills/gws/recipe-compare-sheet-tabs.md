@@ -1,8 +1,8 @@
 ---
-_upstream_sha: badae6ecf23f0f51b7ab8c7d177a9cc27bdf81c2
+_upstream_sha: d5b68317d603c6e7e0f5c39e2fb267ceb727a5bb
 description: Read data from two tabs in a Google Sheet to compare and identify differences.
 name: recipe-compare-sheet-tabs
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Compare Two Google Sheets Tabs

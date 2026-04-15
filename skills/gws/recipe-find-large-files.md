@@ -1,8 +1,8 @@
 ---
-_upstream_sha: 0bd5bd1faec410e365dfc2cea75cbad3f8404d17
+_upstream_sha: 27610996b244d4774f0c3658b717b359183b3f79
 description: Identify large Google Drive files consuming storage quota.
 name: recipe-find-large-files
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Find Largest Files in Drive

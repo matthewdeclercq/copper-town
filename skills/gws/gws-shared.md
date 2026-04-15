@@ -1,9 +1,9 @@
 ---
-_upstream_sha: f360214abe0adb7ec7752bf49a6f695e9b01bcef
+_upstream_sha: dc6a322373614b404068c5ac8ebc32b73e91cc0d
 description: 'gws CLI: Shared patterns for authentication, global flags, and output
   formatting.'
 name: gws-shared
-version: 0.22.3
+version: 0.22.5
 ---
 
 # gws — Shared Reference

@@ -1,9 +1,9 @@
 ---
-_upstream_sha: df05a9ba965812a2f9902dce439a7cc5cfbecc53
+_upstream_sha: c811d150ac390ca3e40d6709b11af34f87f31d2f
 description: Add a list of attendees to an existing Google Calendar event and send
   notifications.
 name: recipe-batch-invite-to-event
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Add Multiple Attendees to a Calendar Event

@@ -1,8 +1,8 @@
 ---
-_upstream_sha: d49f1866219de0fc03db5cc75cd1ec5a0a09bd44
+_upstream_sha: 2be679184ebdbe22b96b7a8d203cf0017aad18a5
 description: Create a Google Form for feedback and share it via Gmail.
 name: recipe-create-feedback-form
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Create and Share a Google Form

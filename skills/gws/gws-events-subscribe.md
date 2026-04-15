@@ -1,10 +1,10 @@
 ---
-_upstream_sha: 8963dcbe60567653fd9747d5c15e557525eb420f
+_upstream_sha: f2e45e90f9a1ebea58995f560a9768ff98f1656b
 cli_help: gws events +subscribe --help
 description: 'Google Workspace Events: Subscribe to Workspace events and stream them
   as NDJSON.'
 name: gws-events-subscribe
-version: 0.22.3
+version: 0.22.5
 ---
 
 # events +subscribe

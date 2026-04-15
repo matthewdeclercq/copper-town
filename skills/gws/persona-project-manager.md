@@ -1,8 +1,8 @@
 ---
-_upstream_sha: c46060d269d314571dc1ecf925cce2d71e7f28e7
+_upstream_sha: 995872c18dc63b4607bb4afe02ba69026191ac3e
 description: Coordinate projects — track tasks, schedule meetings, and share docs.
 name: persona-project-manager
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Project Manager

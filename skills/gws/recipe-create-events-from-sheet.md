@@ -1,9 +1,9 @@
 ---
-_upstream_sha: 841c60f2a2834c841d5394328de59d25ec41d33d
+_upstream_sha: ba248e2f9b50fb4f4e030abe8c7503bfa1b2bb84
 description: Read event data from a Google Sheets spreadsheet and create Google Calendar
   entries for each row.
 name: recipe-create-events-from-sheet
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Create Google Calendar Events from a Sheet

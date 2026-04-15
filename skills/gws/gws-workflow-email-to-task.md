@@ -1,9 +1,9 @@
 ---
-_upstream_sha: 2ff4bff77e64764acddc0d35ed4b5730d8bad6dd
+_upstream_sha: bf9456d77622ecf3cae0d7544602b95ba3faeb13
 cli_help: gws workflow +email-to-task --help
 description: 'Google Workflow: Convert a Gmail message into a Google Tasks entry.'
 name: gws-workflow-email-to-task
-version: 0.22.3
+version: 0.22.5
 ---
 
 # workflow +email-to-task

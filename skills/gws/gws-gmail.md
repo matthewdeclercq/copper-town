@@ -1,9 +1,9 @@
 ---
-_upstream_sha: 80c75efab06dc70f3b422ff67802ae9f8756e1f7
+_upstream_sha: 3423770e6e31c13e1f1ec2ecfa81dc911e9428ae
 cli_help: gws gmail --help
 description: 'Gmail: Send, read, and manage email.'
 name: gws-gmail
-version: 0.22.3
+version: 0.22.5
 ---
 
 # gmail (v1)

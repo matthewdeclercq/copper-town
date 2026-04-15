@@ -1,9 +1,9 @@
 ---
-_upstream_sha: 4c9021276e7c0107f74f08e5dc0ae007537098d5
+_upstream_sha: 6959c2bde41ff60495de7016f44f975c8b159b53
 cli_help: gws meet --help
 description: Manage Google Meet conferences.
 name: gws-meet
-version: 0.22.3
+version: 0.22.5
 ---
 
 # meet (v2)

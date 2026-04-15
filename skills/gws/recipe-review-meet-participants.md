@@ -1,8 +1,8 @@
 ---
-_upstream_sha: 46297a603dfa21a0bb25e6292d215a20bf683e62
+_upstream_sha: ae54f63016f25b1b7480bd92517a971b9c80a296
 description: Review who attended a Google Meet conference and for how long.
 name: recipe-review-meet-participants
-version: 0.22.3
+version: 0.22.5
 ---
 
 # Review Google Meet Attendance

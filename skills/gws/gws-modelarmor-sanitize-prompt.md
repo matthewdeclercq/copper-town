@@ -1,9 +1,9 @@
 ---
-_upstream_sha: bb2add781901388df1fba0619d827b05a92df5a0
+_upstream_sha: cff9dde942b2bc6f2433d05b120afadb6b6d21da
 cli_help: gws modelarmor +sanitize-prompt --help
 description: 'Google Model Armor: Sanitize a user prompt through a Model Armor template.'
 name: gws-modelarmor-sanitize-prompt
-version: 0.22.3
+version: 0.22.5
 ---
 
 # modelarmor +sanitize-prompt
