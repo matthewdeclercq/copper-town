@@ -31,6 +31,10 @@ traces/
 .vscode/
 *.swp
 *.swo
+.claude/
+.cursor/
 
 # Code sandbox
 sandbox/
+
+*BACKLOG.md
