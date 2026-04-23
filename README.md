@@ -1,6 +1,23 @@
 # Copper-Town
 
+> **Learning project:** Built to explore multi-agent harness design patterns. The CLI is functional; the web UI was never tested.
+
+
 A LiteLLM-powered multi-agent AI assistant. Talk to **The Captain** — it routes your tasks to the right specialist agent automatically.
+
+## How it works
+
+Each agent is a plain Markdown file in `agents/` with YAML frontmatter declaring its name, tools, and delegation permissions. The engine reads these definitions at startup — no code changes needed to add or reconfigure an agent.
+
+When you send a message, it goes to **The Captain**. The Captain decides whether to handle it directly or dispatch it to a specialist via `delegate_background`. Delegation is non-blocking: the Captain reports back immediately and delivers the result when the sub-agent finishes. Sub-agents can delegate further (The First Mate orchestrates multi-step pipelines across the rest of the crew).
+
+MCP servers are wired in via `mcp.yml` and mounted lazily per-agent on first tool call. Memory is per-agent and persisted across turns. Scheduled tasks and poll-based triggers are defined in `triggers.yml`.
+
+## Prerequisites
+
+- Python 3.11+
+- Docker (required for The Boatswain's sandboxed code execution)
+- API key for any [LiteLLM-supported](https://docs.litellm.ai/docs/providers) provider
 
 ## Setup
 
@@ -100,9 +117,39 @@ The Boatswain executes shell commands inside a disposable Docker container — n
 BOATSWAIN_DOCKER_IMAGE=python:3.12-slim   # or node:20-slim, ubuntu:24.04, etc.
 ```
 
+## Scheduled triggers
+
+Define cron and poll-based triggers in `triggers.yml` — no code required:
+
+```yaml
+triggers:
+  daily-summary:
+    type: cron
+    agent: captain
+    task: "Summarize today's activity."
+    schedule: "0 18 * * *"   # 6 PM daily
+    enabled: true
+
+  new-receipts:
+    type: poll
+    agent: purser
+    task: "Process new receipt: ${poll_result}"
+    checker: gmail-label
+    checker_args:
+      label: "Receipts/Unprocessed"
+    interval: 300             # seconds between checks
+    enabled: true
+```
+
+The scheduler runs automatically alongside the API server. Trigger state (last fired, fire count) is tracked in memory.
+
 ## Keeping gws skills fresh
 
 ```bash
 .venv/bin/python run.py regen-gws-skills          # refresh all 30+ gws skill docs
 .venv/bin/python run.py regen-gws-skills gmail    # refresh only skills matching "gmail"
 ```
+
+## Backlog
+
+Known gaps and future directions are tracked in [BACKLOG.md](BACKLOG.md).
