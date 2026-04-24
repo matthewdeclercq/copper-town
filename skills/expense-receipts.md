@@ -9,7 +9,7 @@ When given a receipt file (e.g. from Downloads or Desktop), follow this workflow
 
 ## IDs
 
-Check memory for `expense_spreadsheet_id` and `expense_drive_folder_id`. If not found, search Google Drive for the expense spreadsheet and folder by name, then `remember()` both IDs with `pin=True` for future use.
+Check memory for `expense_spreadsheet_id`, `expense_drive_folder_id`, and `expense_company_name`. If not found, search Google Drive for the expense spreadsheet and folder by name, then `remember()` the IDs with `pin=True` for future use. If `expense_company_name` is not in memory, ask the user for it and remember it with `pin=True`.
 
 - **Sheet/tab name:** `Expenses (2026)` — always specify this tab explicitly in every read and write operation.
 
@@ -27,7 +27,7 @@ Check memory for `expense_spreadsheet_id` and `expense_drive_folder_id`. If not 
    - Wait for user approval before writing anything.
 
 5. **Upload to Google Drive**
-   - Naming: `##-CopperTechLLC-Expense-2026` (## = receipt number).
+   - Naming: `##-<expense_company_name>-Expense-<YEAR>` (## = receipt number, YEAR = year from receipt date).
 
 6. **Add to spreadsheet**
    - Write only to the `Expenses (2026)` tab. Append the approved row(s).
